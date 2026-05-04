@@ -174,6 +174,9 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     val eventPersistence: EventPersistence? = if (WispObjectBox.isInitialized) {
         EventPersistence(pubkeyHex)
     } else null
+    val dmPersistence: com.wisp.app.db.DmPersistence? = if (WispObjectBox.isInitialized) {
+        com.wisp.app.db.DmPersistence()
+    } else null
     val eventRepo = EventRepository(profileRepo, muteRepo, relayHintStore).also {
         it.currentUserPubkey = pubkeyHex
         it.deletedEventsRepo = deletedEventsRepo
@@ -183,7 +186,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         eventRepo.contactRepo = it
     }
     val listRepo = ListRepository(app, pubkeyHex)
-    val dmRepo = DmRepository(app, pubkeyHex)
+    val dmRepo = DmRepository(app, pubkeyHex, dmPersistence)
     val groupRepo = GroupRepository(app, pubkeyHex)
     val liveStreamRepo = LiveStreamRepository()
     val notifRepo = NotificationRepository(app, pubkeyHex, muteRepo, eventRepo)

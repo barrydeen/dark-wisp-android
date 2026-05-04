@@ -1,5 +1,6 @@
 package com.wisp.app
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -527,6 +529,16 @@ fun WispNavHost(
         }
     }
 
+    var lastInboxRefreshElapsedMs by rememberSaveable { mutableLongStateOf(0L) }
+    fun refreshInboxSubscriptionsIfStale() {
+        val now = SystemClock.elapsedRealtime()
+        // Inbox subscriptions already stay live in the background; avoid re-sending the
+        // same REQs every time the user bounces between top-level tabs.
+        if (now - lastInboxRefreshElapsedMs < 30_000L) return
+        lastInboxRefreshElapsedMs = now
+        feedViewModel.refreshDmsAndNotifications()
+    }
+
     // Crash report dialog — check on launch if a crash log exists
     var showCrashDialog by remember { mutableStateOf(CrashHandler.hasCrashLog(context)) }
     if (showCrashDialog) {
@@ -607,8 +619,11 @@ fun WispNavHost(
                             } else {
                                 if (tab == BottomTab.WALLET) walletViewModel.navigateHome()
                                 navController.navigate(tab.route) {
-                                    popUpTo(Routes.FEED) { inclusive = false }
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
                                     launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
                         }
@@ -1271,7 +1286,7 @@ fun WispNavHost(
 
         composable(Routes.DM_LIST) {
             LaunchedEffect(Unit) {
-                feedViewModel.refreshDmsAndNotifications()
+                refreshInboxSubscriptionsIfStale()
                 // Decrypt pending gift wraps when signer is available
                 activeSigner?.let { dmListViewModel.decryptPending(it) }
                 dmListViewModel.markDmsRead()
@@ -1331,7 +1346,7 @@ fun WispNavHost(
             val dmConvoViewModel: DmConversationViewModel = viewModel()
             val userPubkey = feedViewModel.getUserPubkey()
             LaunchedEffect(pubkey) {
-                feedViewModel.refreshDmsAndNotifications()
+                refreshInboxSubscriptionsIfStale()
                 dmConvoViewModel.init(
                     peerPubkeyHex = pubkey,
                     dmRepository = feedViewModel.dmRepo,
@@ -1413,7 +1428,7 @@ fun WispNavHost(
             val dmConvoViewModel: DmConversationViewModel = viewModel()
             val userPubkey = feedViewModel.getUserPubkey()
             LaunchedEffect(convKey) {
-                feedViewModel.refreshDmsAndNotifications()
+                refreshInboxSubscriptionsIfStale()
                 dmConvoViewModel.init(
                     peerPubkeyHex = participantList.firstOrNull() ?: "",
                     dmRepository = feedViewModel.dmRepo,
@@ -3034,7 +3049,7 @@ fun WispNavHost(
                 onDispose { feedViewModel.notifRepo.isViewing = false }
             }
             LaunchedEffect(Unit) {
-                feedViewModel.refreshDmsAndNotifications()
+                refreshInboxSubscriptionsIfStale()
                 notificationsViewModel.markRead()
             }
 

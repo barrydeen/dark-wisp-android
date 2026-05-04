@@ -2214,12 +2214,14 @@ internal fun InlineVideoPlayerWithFullscreen(meta: MediaMeta, onFullScreen: (pos
     var isBuffering by remember { mutableStateOf(false) }
 
     val exoPlayer = remember(url) {
-        PipController.reclaimPlayer(url)
+        (PipController.reclaimPlayer(url)
             ?: HttpClientFactory.createExoPlayer(context).apply {
                 setMediaItem(MediaItem.fromUri(Uri.parse(url)))
                 prepare()
                 volume = if (globalMuted.value) 0f else 1f
                 playWhenReady = false
+            }).apply {
+                repeatMode = Player.REPEAT_MODE_ONE
             }
     }
 
@@ -2491,12 +2493,14 @@ private fun InlineVideoPlayer(url: String, modifier: Modifier = Modifier) {
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     val exoPlayer = remember(url) {
-        PipController.reclaimPlayer(url)
+        (PipController.reclaimPlayer(url)
             ?: HttpClientFactory.createExoPlayer(context).apply {
                 setMediaItem(MediaItem.fromUri(Uri.parse(url)))
                 prepare()
                 volume = if (globalMuted.value) 0f else 1f
                 playWhenReady = false
+            }).apply {
+                repeatMode = Player.REPEAT_MODE_ONE
             }
     }
 

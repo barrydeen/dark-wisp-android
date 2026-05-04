@@ -22,11 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
 import com.wisp.app.R
-import com.wisp.app.relay.TorStatus
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Email
@@ -84,9 +81,6 @@ fun WispDrawerContent(
     pubkey: String?,
     isDarkTheme: Boolean = true,
     onToggleTheme: () -> Unit = {},
-    isTorEnabled: Boolean = false,
-    torStatus: TorStatus = TorStatus.DISABLED,
-    onToggleTor: (Boolean) -> Unit = {},
     accounts: List<AccountInfo> = emptyList(),
     onSwitchAccount: (String) -> Unit = {},
     onAddAccount: () -> Unit = {},
@@ -150,28 +144,6 @@ fun WispDrawerContent(
                     ProfilePicture(url = profile?.picture, size = 64)
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                IconButton(onClick = { onToggleTor(!isTorEnabled) }) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (torStatus == TorStatus.STARTING) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp,
-                                strokeCap = StrokeCap.Round
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_tor_onion),
-                                contentDescription = stringResource(R.string.cd_toggle_tor),
-                                modifier = Modifier.size(24.dp),
-                                tint = when (torStatus) {
-                                    TorStatus.CONNECTED -> MaterialTheme.colorScheme.primary
-                                    TorStatus.ERROR -> MaterialTheme.colorScheme.error
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-                    }
-                }
                 IconButton(onClick = onToggleTheme) {
                     Icon(
                         if (isDarkTheme) Icons.Outlined.DarkMode else Icons.Outlined.LightMode,

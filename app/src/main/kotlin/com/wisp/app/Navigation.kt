@@ -314,47 +314,6 @@ fun WispNavHost(
         }
     }
 
-    // Tor state
-    val torPrefs = remember { context.getSharedPreferences("wisp_settings", android.content.Context.MODE_PRIVATE) }
-    val torStatus by com.wisp.app.relay.TorManager.status.collectAsState()
-    val isTorEnabled = torStatus != com.wisp.app.relay.TorStatus.DISABLED
-
-    // Auto-start Tor if previously enabled
-    val torScope = androidx.compose.runtime.rememberCoroutineScope()
-    LaunchedEffect(Unit) {
-        if (torPrefs.getBoolean("tor_enabled", false)) {
-            com.wisp.app.relay.TorManager.start()
-        }
-    }
-    // When Tor finishes connecting/disconnecting, swap the relay pool client.
-    // Skip the initial DISABLED state on first composition — only react to changes.
-    var torStatusInitialized by remember { mutableStateOf(false) }
-    LaunchedEffect(torStatus) {
-        if (!torStatusInitialized) {
-            torStatusInitialized = true
-            return@LaunchedEffect
-        }
-        if (torStatus == com.wisp.app.relay.TorStatus.CONNECTED ||
-            torStatus == com.wisp.app.relay.TorStatus.DISABLED) {
-            if (authViewModel.isLoggedIn) {
-                feedViewModel.lifecycleManager.onTorSwitch(
-                    savedConfigs = feedViewModel.keyRepo.getRelays(),
-                    savedDmUrls = feedViewModel.keyRepo.getDmRelays()
-                )
-            }
-        }
-    }
-    val onToggleTor: (Boolean) -> Unit = { enabled ->
-        torPrefs.edit().putBoolean("tor_enabled", enabled).apply()
-        torScope.launch {
-            if (enabled) {
-                com.wisp.app.relay.TorManager.start()
-            } else {
-                com.wisp.app.relay.TorManager.stop()
-            }
-        }
-    }
-
     val startDestination = rememberSaveable {
         when {
             !authViewModel.isLoggedIn -> Routes.SPLASH
@@ -674,9 +633,6 @@ fun WispNavHost(
         composable(Routes.SPLASH) {
             SplashScreen(
                 viewModel = splashViewModel,
-                isTorEnabled = isTorEnabled,
-                torStatus = torStatus,
-                onToggleTor = onToggleTor,
                 onSignUp = {
                     if (authViewModel.signUp()) {
                         navController.navigate(Routes.ONBOARDING_PROFILE) {
@@ -693,9 +649,6 @@ fun WispNavHost(
         composable(Routes.AUTH) {
             AuthScreen(
                 viewModel = authViewModel,
-                isTorEnabled = isTorEnabled,
-                torStatus = torStatus,
-                onToggleTor = onToggleTor,
                 showSignUp = false,
                 onAuthenticated = { isNewAccount ->
                     val wasAddingAccount = authViewModel.isAddingAccount
@@ -784,9 +737,6 @@ fun WispNavHost(
                 viewModel = feedViewModel,
                 isDarkTheme = isDarkTheme,
                 onToggleTheme = onToggleTheme,
-                isTorEnabled = isTorEnabled,
-                torStatus = torStatus,
-                onToggleTor = onToggleTor,
                 scrollToTopTrigger = scrollToTopTrigger,
                 onCompose = {
                     replyTarget = null

@@ -132,15 +132,9 @@ class Relay(
             }
             val socketId = System.nanoTime()
             Log.d("RLC", "[Relay] connect() creating ws#$socketId for ${config.url}")
-            if (config.url.contains(".onion")) {
-                Log.d("TorRelay", "[Relay] connect() .onion relay: ${config.url} proxy=${client.proxy} connectTimeout=${client.connectTimeoutMillis}ms")
-            }
             webSocket = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.d("RLC", "[Relay] ws#$socketId onOpen ${config.url} | isConnected was=$isConnected")
-                    if (config.url.contains(".onion")) {
-                        Log.d("TorRelay", "[Relay] .onion connection SUCCESS: ${config.url}")
-                    }
                     isConnected = true
                     // Successful connection — reset attempt tracking
                     synchronized(attemptLock) { connectAttempts.clear() }
@@ -164,9 +158,6 @@ class Relay(
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     val isCurrent = synchronized(connectLock) { this@Relay.webSocket === webSocket }
                     Log.e("RLC", "[Relay] ws#$socketId onFailure ${config.url}: ${t.javaClass.simpleName}: ${t.message} | httpCode=${response?.code} | isCurrent=$isCurrent isConnected=$isConnected")
-                    if (config.url.contains(".onion")) {
-                        Log.e("TorRelay", "[Relay] .onion connection FAILED: ${config.url} | error=${t.javaClass.simpleName}: ${t.message}", t)
-                    }
                     synchronized(connectLock) {
                         if (this@Relay.webSocket === webSocket) {
                             isConnected = false

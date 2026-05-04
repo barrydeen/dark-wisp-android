@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.wisp.app.nostr.NostrEvent
 import com.wisp.app.nostr.NostrSigner
 import com.wisp.app.relay.HttpClientFactory
-import com.wisp.app.relay.TorManager
 import com.wisp.app.relay.Relay
 import com.wisp.app.relay.RelayLifecycleManager
 import com.wisp.app.relay.OutboxRouter
@@ -467,32 +466,21 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         if (input.startsWith("ws://") || input.startsWith("wss://")) {
             return if (tryConnect(input)) input else null
         }
-        // Bare domain — try both protocols
-        val isOnion = input.contains(".onion")
-        // .onion relays typically use ws:// (TLS is redundant over Tor), try that first
-        if (isOnion) {
-            val wsUrl = "ws://$input"
-            if (tryConnect(wsUrl)) return wsUrl
-            val wssUrl = "wss://$input"
-            if (tryConnect(wssUrl)) return wssUrl
-        } else {
-            val wssUrl = "wss://$input"
-            if (tryConnect(wssUrl)) return wssUrl
-            val wsUrl = "ws://$input"
-            if (tryConnect(wsUrl)) return wsUrl
-        }
+        // Bare domain — try wss:// first, fall back to ws://
+        val wssUrl = "wss://$input"
+        if (tryConnect(wssUrl)) return wssUrl
+        val wsUrl = "ws://$input"
+        if (tryConnect(wsUrl)) return wsUrl
         return null
     }
 
     private suspend fun tryConnect(url: String): Boolean {
-        val isTor = TorManager.isEnabled()
-        val timeoutMs = if (isTor) 15_000L else 4_000L
         val client = HttpClientFactory.createRelayClient()
         val relay = Relay(RelayConfig(url, read = true, write = false), client)
         relay.autoReconnect = false
         return try {
             relay.connect()
-            val connected = relay.awaitConnected(timeoutMs = timeoutMs)
+            val connected = relay.awaitConnected(timeoutMs = 4_000L)
             relay.disconnect()
             connected
         } catch (e: Exception) {

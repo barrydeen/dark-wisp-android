@@ -27,7 +27,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -619,11 +618,8 @@ fun WispNavHost(
                             } else {
                                 if (tab == BottomTab.WALLET) walletViewModel.navigateHome()
                                 navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
+                                    popUpTo(Routes.FEED) { inclusive = false }
                                     launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
                         }

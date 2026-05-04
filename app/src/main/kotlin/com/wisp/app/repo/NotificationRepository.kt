@@ -14,6 +14,12 @@ import com.wisp.app.nostr.NotificationGroup
 import com.wisp.app.nostr.NotificationSummary
 import com.wisp.app.nostr.NotificationType
 import com.wisp.app.nostr.ZapEntry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -48,6 +54,8 @@ class NotificationRepository(
     private val lock = Any()
     private val groupMap = mutableMapOf<String, NotificationGroup>()
     private val zapEventIdsByGroup = mutableMapOf<String, MutableSet<String>>()
+    private val rebuildScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val rebuildSignals = Channel<Unit>(Channel.CONFLATED)
 
     private val _notifications = MutableStateFlow<List<NotificationGroup>>(emptyList())
     val notifications: StateFlow<List<NotificationGroup>> = _notifications
@@ -81,6 +89,18 @@ class NotificationRepository(
 
     private val _notifReceived = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val notifReceived: SharedFlow<Int> = _notifReceived
+
+    init {
+        rebuildScope.launch {
+            for (signal in rebuildSignals) {
+                delay(50)
+                while (rebuildSignals.tryReceive().isSuccess) Unit
+                synchronized(lock) {
+                    rebuildSortedList()
+                }
+            }
+        }
+    }
 
     fun getLatestNotifTimestamp(): Long? = if (latestNotifTs > 0) latestNotifTs else null
 
@@ -133,7 +153,7 @@ class NotificationRepository(
                     _replyReceived.tryEmit(Unit)
                 }
             }
-            rebuildSortedList()
+            scheduleRebuildSortedList()
         }
     }
 
@@ -277,7 +297,7 @@ class NotificationRepository(
                     }
                 }
             }
-            rebuildSortedList()
+            scheduleRebuildSortedList()
         }
     }
 
@@ -357,12 +377,16 @@ class NotificationRepository(
             if (item.actorPubkey == pubkey) { flatItemIds.remove(item.id); true } else false
         }
         if (toRemove.isNotEmpty() || toUpdate.isNotEmpty()) {
-            rebuildSortedList()
+            scheduleRebuildSortedList()
         }
     }
 
     fun refreshSplits() = synchronized(lock) {
         rebuildSortedList()
+    }
+
+    private fun scheduleRebuildSortedList() {
+        rebuildSignals.trySend(Unit)
     }
 
     private fun rebuildSortedList() {
@@ -873,7 +897,7 @@ class NotificationRepository(
                 val itemRoot = if (ref != null) Nip10.getRootId(ref) ?: ref.id else item.referencedEventId
                 if (itemRoot == rootEventId) { flatItemIds.remove(item.id); true } else false
             }
-            rebuildSortedList()
+            scheduleRebuildSortedList()
         }
     }
 

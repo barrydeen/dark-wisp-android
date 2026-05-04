@@ -225,21 +225,27 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     )
     val safetyPrefs = SafetyPreferences(app, pubkeyHex)
     val spamAuthorCache = com.wisp.app.repo.SpamAuthorCache()
-    val nspamClassifier: com.wisp.app.ml.NSpamClassifier? = try {
-        val weights = com.wisp.app.ml.NSpamWeights.loadFromAssets(app)
-        com.wisp.app.ml.NSpamClassifier(weights)
-    } catch (e: Exception) {
-        Log.e("FeedVM", "Failed to load nspam weights", e)
-        null
-    }
+    @Volatile
+    var nspamClassifier: com.wisp.app.ml.NSpamClassifier? = null
+        private set
+
     init {
         eventRepo.safetyPrefs = safetyPrefs
         eventRepo.extendedNetworkRepo = extendedNetworkRepo
-        notifRepo.spamClassifier = nspamClassifier
         notifRepo.spamAuthorCache = spamAuthorCache
         notifRepo.safetyPrefs = safetyPrefs
         notifRepo.contactRepo = contactRepo
         notifRepo.extendedNetworkRepo = extendedNetworkRepo
+        viewModelScope.launch(Dispatchers.Default) {
+            nspamClassifier = try {
+                val weights = com.wisp.app.ml.NSpamWeights.loadFromAssets(app)
+                com.wisp.app.ml.NSpamClassifier(weights)
+            } catch (e: Exception) {
+                Log.e("FeedVM", "Failed to load nspam weights", e)
+                null
+            }
+            notifRepo.spamClassifier = nspamClassifier
+        }
     }
     val customEmojiRepo = CustomEmojiRepository(app, pubkeyHex)
     val translationRepo = TranslationRepository()

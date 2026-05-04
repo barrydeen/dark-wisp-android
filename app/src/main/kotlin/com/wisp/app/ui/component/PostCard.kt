@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -93,13 +94,13 @@ import java.util.Locale
 
 private val mediaExtensions = setOf("mp4", "mov", "webm", "mp3", "wav", "ogg", "m4a", "flac", "aac", "jpg", "jpeg", "png", "gif", "webp")
 private val mediaMimePrefixes = listOf("video/", "audio/", "image/")
+private val contentUrlRegex = Regex("""https?://\S+""")
 
 private fun contentHasMedia(content: String, imetaMap: Map<String, MediaMeta>): Boolean {
     // Check imeta tags for video/audio
     if (imetaMap.values.any { meta -> meta.mime?.let { m -> mediaMimePrefixes.any { m.startsWith(it) } } == true }) return true
     // Check URLs in content for media extensions
-    val urlRegex = Regex("""https?://\S+""")
-    return urlRegex.findAll(content).any { match ->
+    return contentUrlRegex.findAll(content).any { match ->
         val url = match.value.trimEnd('.', ',', ')', ']')
         val ext = url.substringAfterLast('.').substringBefore('?').lowercase()
         ext in mediaExtensions
@@ -1275,7 +1276,9 @@ internal fun Nip05Badge(
     modifier: Modifier = Modifier
 ) {
     if (nip05.isBlank()) return
-    nip05Repo?.checkOrFetch(pubkey, nip05)
+    LaunchedEffect(nip05Repo, pubkey, nip05) {
+        nip05Repo?.checkOrFetch(pubkey, nip05)
+    }
     val version = nip05Repo?.version?.collectAsState()
     // Read .value to ensure Compose tracks this state
     val v = version?.value ?: 0

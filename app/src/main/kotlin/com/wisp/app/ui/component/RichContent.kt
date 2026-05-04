@@ -54,6 +54,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -627,27 +628,29 @@ fun RichContent(
         )
     }
 
-    // Group segments into inline runs vs block-level items
-    val groups = mutableListOf<Any>() // Either MutableList<ContentSegment> (inline run) or ContentSegment (block)
-    fun isInline(s: ContentSegment) = s is ContentSegment.TextSegment ||
-            s is ContentSegment.HashtagSegment ||
-            s is ContentSegment.NostrProfileSegment ||
-            s is ContentSegment.CustomEmojiSegment ||
-            s is ContentSegment.InlineLinkSegment ||
-            (plainLinks && s is ContentSegment.LinkSegment)
+    val groups = remember(segments, plainLinks) {
+        val built = mutableListOf<Any>() // Either List<ContentSegment> (inline run) or ContentSegment (block)
+        fun isInline(s: ContentSegment) = s is ContentSegment.TextSegment ||
+                s is ContentSegment.HashtagSegment ||
+                s is ContentSegment.NostrProfileSegment ||
+                s is ContentSegment.CustomEmojiSegment ||
+                s is ContentSegment.InlineLinkSegment ||
+                (plainLinks && s is ContentSegment.LinkSegment)
 
-    for (segment in segments) {
-        if (isInline(segment)) {
-            val last = groups.lastOrNull()
-            if (last is MutableList<*>) {
-                @Suppress("UNCHECKED_CAST")
-                (last as MutableList<ContentSegment>).add(segment)
+        for (segment in segments) {
+            if (isInline(segment)) {
+                val last = built.lastOrNull()
+                if (last is MutableList<*>) {
+                    @Suppress("UNCHECKED_CAST")
+                    (last as MutableList<ContentSegment>).add(segment)
+                } else {
+                    built.add(mutableListOf(segment))
+                }
             } else {
-                groups.add(mutableListOf(segment))
+                built.add(segment)
             }
-        } else {
-            groups.add(segment)
         }
+        built
     }
 
     val defaultLinkColor = MaterialTheme.colorScheme.primary
@@ -1835,10 +1838,7 @@ private fun UnknownMediaContent(
             val type = withContext(Dispatchers.IO) {
                 try {
                     val request = Request.Builder().url(url).head().build()
-                    val client = HttpClientFactory.createHttpClient(
-                        connectTimeoutSeconds = 5,
-                        readTimeoutSeconds = 5
-                    )
+                    val client = HttpClientFactory.getShortTimeoutClient()
                     client.newCall(request).execute().use { response ->
                         response.header("Content-Type")
                     }
@@ -2651,20 +2651,31 @@ private fun parseAspectRatio(dim: String?): Float? {
     return if (h > 0) w / h else null
 }
 
+private val mediaPlaceholderCache = LruCache<String, BitmapPainter>(200)
+
 @Composable
 internal fun rememberMediaPlaceholderPainter(
     thumbhash: String?,
     blurhash: String?,
     dimension: String?
 ): BitmapPainter? {
-    return remember(thumbhash, blurhash, dimension) {
+    val painter by produceState<BitmapPainter?>(null, thumbhash, blurhash, dimension) {
+        val key = listOf(thumbhash.orEmpty(), blurhash.orEmpty(), dimension.orEmpty()).joinToString("|")
+        mediaPlaceholderCache.get(key)?.let {
+            value = it
+            return@produceState
+        }
         val dims = dimension?.split('x')
         val width = dims?.getOrNull(0)?.toIntOrNull()?.coerceAtMost(100) ?: 32
         val height = dims?.getOrNull(1)?.toIntOrNull()?.coerceAtMost(100) ?: 32
-        MediaHashDecoder.decode(thumbhash, blurhash, width, height)
-            ?.asImageBitmap()
-            ?.let { BitmapPainter(it) }
+        value = withContext(Dispatchers.Default) {
+            MediaHashDecoder.decode(thumbhash, blurhash, width, height)
+                ?.asImageBitmap()
+                ?.let { BitmapPainter(it) }
+        }
+        value?.let { mediaPlaceholderCache.put(key, it) }
     }
+    return painter
 }
 
 // --- Link Preview (OG tags) ---
@@ -2679,10 +2690,7 @@ private data class OgData(
 private val ogCache = LruCache<String, OgData>(200)
 
 private val httpClient
-    get() = com.wisp.app.relay.HttpClientFactory.createHttpClient(
-        connectTimeoutSeconds = 5,
-        readTimeoutSeconds = 5
-    )
+    get() = com.wisp.app.relay.HttpClientFactory.getShortTimeoutClient()
 
 private val ogTagRegex = Regex(
     """<meta[^>]+property\s*=\s*["']og:(\w+)["'][^>]+content\s*=\s*["']([^"']*)["'][^>]*/?>|<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+property\s*=\s*["']og:(\w+)["'][^>]*/?>""",

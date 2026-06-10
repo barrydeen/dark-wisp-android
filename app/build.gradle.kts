@@ -15,6 +15,13 @@ android {
     namespace = "com.darkwisp.app"
     compileSdk = 35
 
+    val localProps = Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    fun prop(name: String): String? =
+        localProps.getProperty(name)?.takeIf { it.isNotBlank() } ?: System.getenv(name)
+
     defaultConfig {
         applicationId = baseApplicationId
         minSdk = 26
@@ -27,14 +34,19 @@ android {
             abiFilters += "arm64-v8a"
         }
 
-        val localProps = rootProject.file("local.properties")
-        val breezApiKey = if (localProps.exists()) {
-            val props = Properties()
-            localProps.inputStream().use { props.load(it) }
-            props.getProperty("breez.api.key", "")
-        } else ""
-        buildConfigField("String", "BREEZ_API_KEY", "\"$breezApiKey\"")
+        buildConfigField("String", "BREEZ_API_KEY", "\"${prop("breez.api.key") ?: ""}\"")
         buildConfigField("String", "BREEZ_SDK_VERSION", "\"${libs.versions.breez.sdk.spark.get()}\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            prop("RELEASE_STORE_FILE")?.let { path ->
+                storeFile = rootProject.file(path)
+                storePassword = prop("RELEASE_STORE_PASSWORD")
+                keyAlias = prop("RELEASE_KEY_ALIAS")
+                keyPassword = prop("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -47,6 +59,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Signed directly by Gradle when keystore props exist (local.properties or env);
+            // contributors without the keystore still get app-release-unsigned.apk
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
     }
 
@@ -60,7 +75,11 @@ android {
     }
 
     packaging {
-        jniLibs.useLegacyPackaging = false
+        // Direct-APK distribution only (Zapstore/GitHub): compressed native libs give the
+        // smallest download (44MB vs 82MB measured on 1.0.0 vs 1.0.2). The uncompressed
+        // 16KB page-size packaging is only required for Google Play; revisit if Play
+        // distribution or 16KB-kernel devices ever matter.
+        jniLibs.useLegacyPackaging = true
     }
 
     buildFeatures {

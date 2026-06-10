@@ -1,13 +1,13 @@
-HSPLcom/wisp/app/MainActivity;->**(**)**
-HSPLcom/wisp/app/MainActivityKt;->**(**)**
+HSPLcom/darkwisp/app/MainActivity;->**(**)**
+HSPLcom/darkwisp/app/MainActivityKt;->**(**)**
 
-HSPLcom/wisp/app/viewmodel/**;->**(**)**
-HSPLcom/wisp/app/repo/**;->**(**)**
-HSPLcom/wisp/app/relay/**;->**(**)**
-HSPLcom/wisp/app/nostr/**;->**(**)**
+HSPLcom/darkwisp/app/viewmodel/**;->**(**)**
+HSPLcom/darkwisp/app/repo/**;->**(**)**
+HSPLcom/darkwisp/app/relay/**;->**(**)**
+HSPLcom/darkwisp/app/nostr/**;->**(**)**
 
-HSPLcom/wisp/app/ui/screen/FeedScreenKt;->**(**)**
-HSPLcom/wisp/app/ui/screen/AuthScreenKt;->**(**)**
-HSPLcom/wisp/app/ui/screen/LoadingScreenKt;->**(**)**
-HSPLcom/wisp/app/ui/component/**;->**(**)**
-HSPLcom/wisp/app/ui/navigation/**;->**(**)**
+HSPLcom/darkwisp/app/ui/screen/FeedScreenKt;->**(**)**
+HSPLcom/darkwisp/app/ui/screen/AuthScreenKt;->**(**)**
+HSPLcom/darkwisp/app/ui/screen/LoadingScreenKt;->**(**)**
+HSPLcom/darkwisp/app/ui/component/**;->**(**)**
+HSPLcom/darkwisp/app/ui/navigation/**;->**(**)**

@@ -1,6 +1,6 @@
-# Wisp
+# Dark Wisp
 
-A minimal, performant Android client for the [Nostr](https://nostr.com) protocol. Built with Kotlin and Jetpack Compose (Material 3), Wisp prioritizes decentralization, intelligent relay routing, strong privacy, and a clean native experience.
+A minimal, performant Android client for the [Nostr](https://nostr.com) protocol. Built with Kotlin and Jetpack Compose (Material 3), Dark Wisp prioritizes decentralization, intelligent relay routing, strong privacy, and a clean native experience.
 
 > **Status:** v1.0.0 — stable, actively developed.
 
@@ -8,7 +8,7 @@ A minimal, performant Android client for the [Nostr](https://nostr.com) protocol
 
 ## Table of Contents
 
-- [Why Wisp](#why-wisp)
+- [Why Dark Wisp](#why-dark-wisp)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
 - [Supported NIPs](#supported-nips)
@@ -20,11 +20,11 @@ A minimal, performant Android client for the [Nostr](https://nostr.com) protocol
 
 ---
 
-## Why Wisp
+## Why Dark Wisp
 
-Most Nostr clients treat relays as interchangeable dumb pipes and lean on a small handful of "mega-relays." Wisp takes a different approach — it implements the full outbox/inbox relay model with reliability scoring, routes messages based on where users actually publish and read, and is built so that decentralization is the default path, not an opt-in.
+Most Nostr clients treat relays as interchangeable dumb pipes and lean on a small handful of "mega-relays." Dark Wisp takes a different approach — it implements the full outbox/inbox relay model with reliability scoring, routes messages based on where users actually publish and read, and is built so that decentralization is the default path, not an opt-in.
 
-The result is faster event delivery, less wasted bandwidth, and a client that actively reinforces the architecture Nostr was designed for. Wisp is built to be fast, lightweight, and respectful of both your device and the relay network.
+The result is faster event delivery, less wasted bandwidth, and a client that actively reinforces the architecture Nostr was designed for. Dark Wisp is built to be fast, lightweight, and respectful of both your device and the relay network.
 
 ---
 
@@ -32,7 +32,7 @@ The result is faster event delivery, less wasted bandwidth, and a client that ac
 
 ### Intelligent Outbox/Inbox Relay Routing
 
-Wisp implements a full NIP-65 outbox/inbox model with relay scoring:
+Dark Wisp implements a full NIP-65 outbox/inbox model with relay scoring:
 
 - **Outbox reads** — fetches a user's posts from their *write relays* (where they actually publish), not from a hardcoded list
 - **Inbox writes** — delivers replies, reactions, and mentions to the recipient's *read relays* so they actually see them
@@ -49,7 +49,7 @@ Wisp implements a full NIP-65 outbox/inbox model with relay scoring:
 - **NIP-04 fallback** — legacy encrypted DMs still read for backward compatibility
 - **Dedicated DM relays** — publish DMs to a separate relay set (NIP-51 kind 10050) from your public posts
 - **Encrypted media** — optional encrypted image attachments in DMs
-- **Optional Amber / NIP-55 remote signer** — keep your `nsec` in a dedicated signer app and never hand it to Wisp at all
+- **Optional Amber / NIP-55 remote signer** — keep your `nsec` in a dedicated signer app and never hand it to Dark Wisp at all
 
 ### Lightning & Zaps
 
@@ -114,7 +114,7 @@ A built-in non-custodial Lightning wallet powered by [Breez SDK (Spark)](https:/
 - **Multiple accounts** with per-account encrypted storage
 - **EncryptedSharedPreferences** (AES256-GCM) for private keys — `nsec` never touches plain SharedPreferences
 - **Biometric authentication** for key access
-- **NIP-55 remote signing** — delegate all signing/encryption to Amber (or another signer app) via Android intents, so Wisp never holds the key
+- **NIP-55 remote signing** — delegate all signing/encryption to Amber (or another signer app) via Android intents, so Dark Wisp never holds the key
 - **NIP-19 bech32** — npub, nsec, note, nevent, nprofile encode/decode, with `nostr:` URI rendering in post content
 - **NIP-05 DNS verification** with result caching
 - **QR code display** for sharing keys and profiles
@@ -136,7 +136,7 @@ A built-in non-custodial Lightning wallet powered by [Breez SDK (Spark)](https:/
 
 ## Architecture
 
-Wisp follows an MVVM architecture with clear layer separation:
+Dark Wisp follows an MVVM architecture with clear layer separation:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -179,7 +179,7 @@ Wisp follows an MVVM architecture with clear layer separation:
 ### Project Structure
 
 ```
-app/src/main/kotlin/com/wisp/app/
+app/src/main/kotlin/com/darkwisp/app/
 ├── nostr/          # Protocol implementations (NipXX.kt objects)
 ├── relay/          # WebSocket relay, pool, outbox router, scoring
 ├── repo/           # Data repositories, caches, and persistence wrappers
@@ -248,7 +248,7 @@ APK downloads are available on the [Releases](../../releases) page.
 1. **Create, import, or pair a signer** — generate a fresh keypair, paste your `nsec`, or connect Amber for remote signing
 2. **Set up your profile** — the onboarding flow walks you through name, picture, and bio
 3. **Pick some interests** — topic/interest selection seeds your first follow suggestions
-4. **Follow some people** — Wisp suggests popular accounts to get your feed started
+4. **Follow some people** — Dark Wisp suggests popular accounts to get your feed started
 5. **Configure relays** — your relay list is published as a NIP-65 event so other outbox-aware clients can find you
 
 ---
@@ -265,8 +265,8 @@ APK downloads are available on the [Releases](../../releases) page.
 
 ```bash
 # Clone the repository
-git clone https://github.com/barrydeen/wisp.git
-cd wisp
+git clone https://github.com/barrydeen/dark-wisp-android.git
+cd dark-wisp-android
 
 # Build debug APK
 ./gradlew assembleDebug
@@ -284,7 +284,7 @@ Release builds use R8 minification; keep rules live in `app/proguard-rules.pro` 
 
 ## Contributing
 
-Contributions are welcome. Wisp is open source and community help makes it better.
+Contributions are welcome. Dark Wisp is open source and community help makes it better.
 
 ### How to Contribute
 
@@ -349,7 +349,7 @@ Contributions are welcome. Wisp is open source and community help makes it bette
 
 ## License
 
-Wisp is released under the [MIT License](LICENSE).
+Dark Wisp is released under the [MIT License](LICENSE).
 
 ```
 MIT License

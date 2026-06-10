@@ -12,16 +12,16 @@ android {
     val baseApplicationId = rootProject.extra["baseApplicationId"] as String
     val debugApplicationIdSuffix = rootProject.extra["debugApplicationIdSuffix"] as String
 
-    namespace = "com.wisp.app"
+    namespace = "com.darkwisp.app"
     compileSdk = 35
 
     defaultConfig {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 79
-        versionName = "1.0.5"
-        resValue("string", "app_name", "Wisp")
+        versionCode = 1
+        versionName = "1.0.0"
+        resValue("string", "app_name", "Dark Wisp")
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -40,7 +40,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = debugApplicationIdSuffix
-            resValue("string", "app_name", "Wisp Debug")
+            resValue("string", "app_name", "Dark Wisp Debug")
         }
 
         release {

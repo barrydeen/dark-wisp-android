@@ -1,4 +1,4 @@
-extra["baseApplicationId"] = "com.wisp.app"
+extra["baseApplicationId"] = "com.darkwisp.app"
 extra["debugApplicationIdSuffix"] = ".debug"
 
 plugins {

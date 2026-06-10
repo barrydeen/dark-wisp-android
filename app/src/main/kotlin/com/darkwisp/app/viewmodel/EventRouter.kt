@@ -15,6 +15,7 @@ import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.nostr.Nip65
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.toHex
@@ -35,6 +36,7 @@ import com.darkwisp.app.repo.ListRepository
 import com.darkwisp.app.repo.MetadataFetcher
 import com.darkwisp.app.repo.MuteRepository
 import com.darkwisp.app.repo.NotificationRepository
+import com.darkwisp.app.repo.PaymentTargetRepository
 import com.darkwisp.app.repo.PinRepository
 import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.GroupRepository
@@ -62,6 +64,7 @@ class EventRouter(
     private val blossomRepo: BlossomRepository,
     private val customEmojiRepo: CustomEmojiRepository,
     private val relayListRepo: RelayListRepository,
+    private val paymentTargetRepo: PaymentTargetRepository,
     private val interestRepo: InterestRepository,
     private val relaySetRepo: RelaySetRepository,
     private val relayScoreBoard: RelayScoreBoard,
@@ -390,6 +393,9 @@ class EventRouter(
                     keyRepo.saveDmRelays(urls)
                     relayPool.updateDmRelays(urls)
                 }
+            }
+            if (event.kind == NipA3.KIND) {
+                paymentTargetRepo.updateFromEvent(event)
             }
             if (event.kind == Nip51.KIND_SEARCH_RELAYS) {
                 val myPubkey = getUserPubkey()

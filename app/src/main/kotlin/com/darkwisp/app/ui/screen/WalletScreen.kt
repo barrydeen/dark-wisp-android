@@ -55,7 +55,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Surface
@@ -129,6 +132,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.darkwisp.app.BuildConfig
 import com.darkwisp.app.R
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.repo.BalanceUnit
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.WalletMode
@@ -180,6 +184,21 @@ fun WalletScreen(
             )
         }
     ) { padding ->
+        // Payment targets are published to Nostr, not tied to a Lightning wallet,
+        // so this page is reachable in every wallet state.
+        if (currentPage is WalletPage.PaymentTargets) {
+            PaymentTargetsContent(
+                targets = viewModel.paymentTargets.collectAsState().value,
+                isLoading = viewModel.paymentTargetsLoading.collectAsState().value,
+                error = viewModel.paymentTargetsError.collectAsState().value,
+                isDirty = viewModel.paymentTargetsDirty.collectAsState().value,
+                onAdd = { type, authority -> viewModel.addPaymentTarget(type, authority) },
+                onRemove = { viewModel.removePaymentTarget(it) },
+                onSave = { viewModel.publishPaymentTargets() },
+                modifier = Modifier.padding(padding)
+            )
+            return@Scaffold
+        }
         when (walletState) {
             is WalletState.NotConnected,
             is WalletState.Connecting,
@@ -240,11 +259,32 @@ fun WalletScreen(
                                     onConfirm = { viewModel.confirmSparkBackup() }
                                 )
                             }
-                            else -> WalletModeSelectionContent(
-                                onSelectNwc = { viewModel.selectNwcMode() },
-                                onSelectSpark = { viewModel.selectSparkMode() },
-                                onRestoreSpark = { viewModel.selectSparkMode() }
-                            )
+                            else -> {
+                                WalletModeSelectionContent(
+                                    onSelectNwc = { viewModel.selectNwcMode() },
+                                    onSelectSpark = { viewModel.selectSparkMode() },
+                                    onRestoreSpark = { viewModel.selectSparkMode() }
+                                )
+                                // Publishing payment targets doesn't need a connected wallet
+                                if (viewModel.keyRepo.isLoggedIn()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.loadPaymentTargets()
+                                            viewModel.navigateTo(WalletPage.PaymentTargets)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Payment Targets")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -420,6 +460,10 @@ fun WalletScreen(
                             viewModel.navigateTo(WalletPage.BackupToRelay)
                         },
                         onDeleteWallet = { viewModel.navigateTo(WalletPage.DeleteWalletConfirm) },
+                        onPaymentTargets = {
+                            viewModel.loadPaymentTargets()
+                            viewModel.navigateTo(WalletPage.PaymentTargets)
+                        },
                         relayBackupStatuses = viewModel.relayBackupStatuses.collectAsState().value,
                         relayBackupCheckLoading = viewModel.relayBackupCheckLoading.collectAsState().value,
                         deleteBackupStatus = viewModel.deleteBackupStatus.collectAsState().value,
@@ -2643,6 +2687,7 @@ private fun WalletSettingsContent(
     onBackupMnemonic: () -> Unit,
     onBackupToRelay: () -> Unit = {},
     onDeleteWallet: () -> Unit,
+    onPaymentTargets: () -> Unit = {},
     relayBackupStatuses: List<RelayBackupInfo> = emptyList(),
     relayBackupCheckLoading: Boolean = false,
     deleteBackupStatus: DeleteBackupStatus = DeleteBackupStatus.Idle,
@@ -2832,6 +2877,30 @@ private fun WalletSettingsContent(
                 }
             }
             }
+        }
+
+        // Payments section
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            "Payments",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = onPaymentTargets,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                Icons.Outlined.AccountBalanceWallet,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("Payment Targets")
         }
 
         // Security section
@@ -3816,6 +3885,207 @@ private fun RestoreFromRelayContent(
                     Text("Cancel")
                 }
             }
+        }
+
+        Spacer(Modifier.height(32.dp))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PaymentTargetsContent(
+    targets: List<NipA3.PaymentTarget>,
+    isLoading: Boolean,
+    error: String?,
+    isDirty: Boolean,
+    onAdd: (type: String, authority: String) -> Boolean,
+    onRemove: (NipA3.PaymentTarget) -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var typeInput by remember { mutableStateOf("") }
+    var authorityInput by remember { mutableStateOf("") }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            "Payment Targets",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "Publish addresses for other cryptocurrencies and payment apps so people can pay you beyond Lightning zaps.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        if (isLoading) {
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (targets.isEmpty() && !isLoading) {
+            Text(
+                "No payment targets yet. Add one below.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        targets.forEach { target ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            NipA3.symbol(target.type)?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.padding(end = 6.dp)
+                                )
+                            }
+                            Text(
+                                NipA3.displayName(target.type),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            target.authority,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = { onRemove(target) }) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove payment target",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            "Add target",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = typeInput,
+            onValueChange = { typeInput = it },
+            label = { Text("Network type") },
+            placeholder = { Text("bitcoin") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            NipA3.RECOGNIZED.keys.forEach { type ->
+                val selected = typeInput.trim().lowercase() == type
+                OutlinedButton(
+                    onClick = { typeInput = type },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline
+                    )
+                ) {
+                    Text(
+                        NipA3.displayName(type),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = authorityInput,
+            onValueChange = { authorityInput = it },
+            label = { Text("Address") },
+            placeholder = { Text("bc1q…") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        error?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = {
+                if (onAdd(typeInput, authorityInput)) {
+                    typeInput = ""
+                    authorityInput = ""
+                }
+            },
+            enabled = typeInput.trim().isNotEmpty() && authorityInput.trim().isNotEmpty(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Add")
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Button(
+            onClick = onSave,
+            enabled = isDirty,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Save & Publish")
         }
 
         Spacer(Modifier.height(32.dp))

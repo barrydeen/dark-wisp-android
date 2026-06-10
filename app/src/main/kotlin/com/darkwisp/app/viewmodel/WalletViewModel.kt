@@ -8,12 +8,15 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.LocalSigner
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip78
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.RemoteSigner
 import com.darkwisp.app.nostr.toHex
 import android.content.ContentResolver
+import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayEvent
+import com.darkwisp.app.repo.PaymentTargetRepository
 import com.darkwisp.app.repo.SigningMode
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
@@ -112,6 +115,7 @@ sealed class WalletPage {
     data class ReceiveSuccess(val amountSats: Long) : WalletPage()
     object Transactions : WalletPage()
     object Settings : WalletPage()
+    object PaymentTargets : WalletPage()
     object LightningAddressSetup : WalletPage()
     object LightningAddressQR : WalletPage()
     object DeleteWalletConfirm : WalletPage()
@@ -126,7 +130,9 @@ class WalletViewModel(
     val eventRepo: EventRepository,
     val relayPool: RelayPool,
     val keyRepo: KeyRepository,
-    private val contentResolver: ContentResolver? = null
+    private val contentResolver: ContentResolver? = null,
+    private val paymentTargetRepo: PaymentTargetRepository? = null,
+    private val getSigner: () -> NostrSigner? = { null }
 ) : ViewModel() {
 
     private val _walletMode = MutableStateFlow(walletModeRepo.getMode())
@@ -327,6 +333,116 @@ class WalletViewModel(
                 sparkRepo.isConnected.first { it }
                 fetchLightningAddress()
             }
+        }
+    }
+
+    // --- NIP-A3 payment targets ---
+
+    private val _paymentTargets = MutableStateFlow<List<NipA3.PaymentTarget>>(emptyList())
+    val paymentTargets: StateFlow<List<NipA3.PaymentTarget>> = _paymentTargets
+
+    private val _paymentTargetsLoading = MutableStateFlow(false)
+    val paymentTargetsLoading: StateFlow<Boolean> = _paymentTargetsLoading
+
+    private val _paymentTargetsError = MutableStateFlow<String?>(null)
+    val paymentTargetsError: StateFlow<String?> = _paymentTargetsError
+
+    private val _paymentTargetsDirty = MutableStateFlow(false)
+    val paymentTargetsDirty: StateFlow<Boolean> = _paymentTargetsDirty
+
+    /**
+     * Seed from the local cache, then read back the newest kind 10133 from the
+     * network before editing — it's a replaceable event, so saving on top of a
+     * stale copy would clobber targets added from another client.
+     */
+    fun loadPaymentTargets() {
+        val repo = paymentTargetRepo ?: return
+        val me = keyRepo.getPubkeyHex() ?: return
+        _paymentTargetsError.value = null
+        _paymentTargetsDirty.value = false
+        _paymentTargets.value = repo.getTargets(me) ?: emptyList()
+        _paymentTargetsLoading.value = true
+        viewModelScope.launch {
+            try {
+                val subId = "own-paytgt"
+                val filter = Filter(kinds = listOf(NipA3.KIND), authors = listOf(me), limit = 1)
+                val reqMsg = ClientMessage.req(subId, filter)
+                for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
+                    relayPool.sendToRelayOrEphemeral(url, reqMsg, skipBadCheck = true)
+                }
+                relayPool.sendToAll(reqMsg)
+
+                val result = withTimeoutOrNull(4000L) {
+                    relayPool.relayEvents.first {
+                        it.subscriptionId == subId && it.event.kind == NipA3.KIND && it.event.pubkey == me
+                    }
+                }
+
+                val closeMsg = ClientMessage.close(subId)
+                for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
+                    relayPool.sendToRelay(url, closeMsg)
+                }
+                relayPool.sendToAll(closeMsg)
+
+                if (result != null) {
+                    repo.updateFromEvent(result.event)
+                    if (!_paymentTargetsDirty.value) {
+                        _paymentTargets.value = repo.getTargets(me) ?: emptyList()
+                    }
+                }
+            } finally {
+                _paymentTargetsLoading.value = false
+            }
+        }
+    }
+
+    fun addPaymentTarget(typeRaw: String, authority: String): Boolean {
+        val type = NipA3.normalizeType(typeRaw)
+        if (type == null) {
+            _paymentTargetsError.value = "Type may only contain a-z, 0-9 and hyphens"
+            return false
+        }
+        val trimmedAuthority = authority.trim()
+        if (!NipA3.isValidAuthority(trimmedAuthority)) {
+            _paymentTargetsError.value = "Enter a valid address"
+            return false
+        }
+        val target = NipA3.PaymentTarget(type, trimmedAuthority)
+        if (target in _paymentTargets.value) {
+            _paymentTargetsError.value = "That payment target is already in the list"
+            return false
+        }
+        _paymentTargetsError.value = null
+        _paymentTargets.value = _paymentTargets.value + target
+        _paymentTargetsDirty.value = true
+        return true
+    }
+
+    fun removePaymentTarget(target: NipA3.PaymentTarget) {
+        _paymentTargets.value = _paymentTargets.value - target
+        _paymentTargetsDirty.value = true
+    }
+
+    fun publishPaymentTargets(): Boolean {
+        val s = getSigner() ?: keyRepo.getKeypair()?.let { LocalSigner(it.privkey, it.pubkey) } ?: return false
+        return try {
+            viewModelScope.launch {
+                val event = s.signEvent(
+                    kind = NipA3.KIND,
+                    content = "",
+                    tags = NipA3.buildTags(_paymentTargets.value)
+                )
+                val msg = ClientMessage.event(event)
+                relayPool.sendToWriteRelays(msg)
+                for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
+                    relayPool.sendToRelayOrEphemeral(url, msg)
+                }
+                paymentTargetRepo?.updateFromEvent(event)
+                _paymentTargetsDirty.value = false
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 

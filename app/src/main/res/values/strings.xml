@@ -451,6 +451,8 @@
     <string name="zap_quick_amounts">Quick Amounts</string>
     <string name="zap_wallet_not_connected">Wallet Not Connected</string>
     <string name="zap_connect_wallet">Connect a Lightning wallet to send zaps.</string>
+    <string name="zap_other_ways_to_pay">Other ways to pay</string>
+    <string name="zap_connect_wallet_to_zap">Connect a wallet to zap instead</string>
     <string name="zap_both_parties_need_dm_relays">Both parties need DM relays</string>
     <string name="zap_private_locked_for_private_reply">Private — replying to a private thread</string>
     <string name="zap_private_requires_dm_relays">Private zap requires DM relays on both sides</string>

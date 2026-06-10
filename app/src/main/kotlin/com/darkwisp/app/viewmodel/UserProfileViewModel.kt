@@ -10,6 +10,7 @@ import com.darkwisp.app.nostr.Nip02
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip65
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.SimpleGroupEntry
 import com.darkwisp.app.nostr.LocalSigner
 import com.darkwisp.app.nostr.NostrEvent
@@ -23,6 +24,7 @@ import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.DiscoveryState
 import com.darkwisp.app.repo.ExtendedNetworkRepository
 import com.darkwisp.app.repo.KeyRepository
+import com.darkwisp.app.repo.PaymentTargetRepository
 import com.darkwisp.app.repo.RelayHintStore
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.relay.SubscriptionManager
@@ -78,6 +80,9 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
     private val _relayList = MutableStateFlow<List<RelayConfig>>(emptyList())
     val relayList: StateFlow<List<RelayConfig>> = _relayList
 
+    private val _paymentTargets = MutableStateFlow<List<NipA3.PaymentTarget>>(emptyList())
+    val paymentTargets: StateFlow<List<NipA3.PaymentTarget>> = _paymentTargets
+
     private val _pinnedNoteIds = MutableStateFlow<Set<String>>(emptySet())
     val pinnedNoteIds: StateFlow<Set<String>> = _pinnedNoteIds
 
@@ -129,6 +134,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
     private var outboxRouterRef: OutboxRouter? = null
     private var subManagerRef: SubscriptionManager? = null
     private var relayHintStoreRef: RelayHintStore? = null
+    private var paymentTargetRepoRef: PaymentTargetRepository? = null
     private val activeEngagementSubIds = mutableListOf<String>()
     private val activeFollowProfileSubIds = mutableListOf<String>()
     private var topRelayUrls: List<String> = emptyList()
@@ -152,7 +158,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
     private var latestRelayListTimestamp: Long = 0
 
     companion object {
-        private val SUB_IDS = setOf("userprofile", "userposts", "usergallery", "userfollows", "userrelays", "userpins", "usergroups", "followprofiles")
+        private val SUB_IDS = setOf("userprofile", "userposts", "usergallery", "userfollows", "userrelays", "userpins", "usergroups", "userpaytargets", "followprofiles")
     }
 
     fun loadProfile(
@@ -165,7 +171,8 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         subManager: SubscriptionManager? = null,
         topRelayUrls: List<String> = emptyList(),
         relayHintStore: RelayHintStore? = null,
-        extendedNetworkRepo: ExtendedNetworkRepository? = null
+        extendedNetworkRepo: ExtendedNetworkRepository? = null,
+        paymentTargetRepo: PaymentTargetRepository? = null
     ) {
         targetPubkey = pubkey
         eventRepoRef = eventRepo
@@ -191,6 +198,8 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         _groups.value = emptyList()
         _groupsLoading.value = false
         _profile.value = eventRepo.getProfileData(pubkey)
+        paymentTargetRepoRef = paymentTargetRepo
+        _paymentTargets.value = paymentTargetRepo?.getTargets(pubkey) ?: emptyList()
         _relayHints.value = relayHintStore?.getHints(pubkey) ?: emptySet()
         _isFollowing.value = contactRepo.isFollowing(pubkey)
         extendedNetworkRepoRef = extendedNetworkRepo
@@ -222,6 +231,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         val relayFilter = Filter(kinds = listOf(10002), authors = listOf(pubkey), limit = 1)
         val pinFilter = Filter(kinds = listOf(10001), authors = listOf(pubkey), limit = 1)
         val groupsFilter = Filter(kinds = listOf(Nip51.KIND_SIMPLE_GROUPS), authors = listOf(pubkey), limit = 1)
+        val payTargetsFilter = Filter(kinds = listOf(NipA3.KIND), authors = listOf(pubkey), limit = 1)
 
         if (outboxRouter != null) {
             outboxRouter.subscribeToUserWriteRelays("userprofile", pubkey, profileFilter)
@@ -231,6 +241,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             outboxRouter.subscribeToUserWriteRelays("userrelays", pubkey, relayFilter)
             outboxRouter.subscribeToUserWriteRelays("userpins", pubkey, pinFilter)
             outboxRouter.subscribeToUserWriteRelays("usergroups", pubkey, groupsFilter)
+            outboxRouter.subscribeToUserWriteRelays("userpaytargets", pubkey, payTargetsFilter)
         } else {
             relayPool.sendToAll(ClientMessage.req("userprofile", profileFilter))
             relayPool.sendToAll(ClientMessage.req("userposts", postsFilter))
@@ -239,6 +250,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             relayPool.sendToAll(ClientMessage.req("userrelays", relayFilter))
             relayPool.sendToAll(ClientMessage.req("userpins", pinFilter))
             relayPool.sendToAll(ClientMessage.req("usergroups", groupsFilter))
+            relayPool.sendToAll(ClientMessage.req("userpaytargets", payTargetsFilter))
         }
         // Also query top scored relays as safety net
         for (url in topRelayUrls) {
@@ -298,6 +310,11 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
                 if (event.kind == 10002 && event.pubkey == pubkey) {
                     relayListRepo?.updateFromEvent(event)
+                }
+                if (event.kind == NipA3.KIND && event.pubkey == pubkey) {
+                    paymentTargetRepoRef?.updateFromEvent(event)
+                    _paymentTargets.value =
+                        paymentTargetRepoRef?.getTargets(pubkey) ?: NipA3.parse(event)
                 }
                 if (event.pubkey == pubkey) {
                     when (event.kind) {

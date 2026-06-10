@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.darkwisp.app.R
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.ZapPreferences
 import com.darkwisp.app.repo.ZapPreset
@@ -115,26 +116,63 @@ fun ZapDialog(
      */
     forcePrivate: Boolean = false,
     /** When opening from a quick preset (e.g. chat actions sheet), pre-select that amount in sats. */
-    initialSatsHint: Int? = null
+    initialSatsHint: Int? = null,
+    /** Note author / zap recipient; enables the NIP-A3 "Other ways to pay" section. */
+    recipientPubkey: String? = null,
+    /** False when the recipient's profile has no lightning address. */
+    recipientHasLud16: Boolean = true,
+    /** Loads the recipient's NIP-A3 payment targets (FeedViewModel::fetchPaymentTargets). */
+    fetchPaymentTargets: (suspend (String) -> List<NipA3.PaymentTarget>)? = null
 ) {
-    if (!isWalletConnected) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(stringResource(R.string.zap_wallet_not_connected)) },
-            text = { Text(stringResource(R.string.zap_connect_wallet)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDismiss()
-                    onGoToWallet()
-                }) {
-                    Text(stringResource(R.string.btn_go_to_wallet))
+    var paymentTargets by remember { mutableStateOf<List<NipA3.PaymentTarget>>(emptyList()) }
+    var selectedTarget by remember { mutableStateOf<NipA3.PaymentTarget?>(null) }
+
+    LaunchedEffect(recipientPubkey) {
+        val pk = recipientPubkey ?: return@LaunchedEffect
+        val fetch = fetchPaymentTargets ?: return@LaunchedEffect
+        paymentTargets = fetch(pk)
+    }
+
+    selectedTarget?.let { target ->
+        PaymentTargetSheet(target = target) { selectedTarget = null }
+    }
+
+    // Lightning zapping needs a connected wallet and a recipient lightning address.
+    // When either is missing but the author published NIP-A3 payment targets, show
+    // those instead of dead-ending.
+    if (!isWalletConnected || !recipientHasLud16) {
+        if (paymentTargets.isNotEmpty()) {
+            PaymentTargetsOnlyDialog(
+                targets = paymentTargets,
+                showGoToWallet = !isWalletConnected,
+                onTargetClick = { selectedTarget = it },
+                onGoToWallet = onGoToWallet,
+                onDismiss = onDismiss
+            )
+            return
+        }
+        if (!isWalletConnected) {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { Text(stringResource(R.string.zap_wallet_not_connected)) },
+                text = { Text(stringResource(R.string.zap_connect_wallet)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        onDismiss()
+                        onGoToWallet()
+                    }) {
+                        Text(stringResource(R.string.btn_go_to_wallet))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel)) }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel)) }
-            }
-        )
-        return
+            )
+            return
+        }
+        // Wallet connected but no lud16 and no payment targets: fall through to the
+        // regular dialog — the zap send surfaces the missing-lightning-address error,
+        // matching pre-NIP-A3 behavior.
     }
 
     val context = LocalContext.current
@@ -499,6 +537,27 @@ fun ZapDialog(
                     }
                     } // end !forcePrivate
 
+                    // NIP-A3 payment targets
+                    if (paymentTargets.isNotEmpty()) {
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.zap_other_ways_to_pay),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            paymentTargets.forEach { target ->
+                                PaymentTargetChip(target) { selectedTarget = target }
+                            }
+                        }
+                    }
+
                     Spacer(Modifier.height(16.dp))
 
                     // Action buttons
@@ -549,6 +608,86 @@ fun ZapDialog(
         }
     }
 
+}
+
+/**
+ * Shown instead of the zap dialog when lightning zapping isn't possible
+ * (no wallet or no lud16) but the author published NIP-A3 payment targets.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PaymentTargetsOnlyDialog(
+    targets: List<NipA3.PaymentTarget>,
+    showGoToWallet: Boolean,
+    onTargetClick: (NipA3.PaymentTarget) -> Unit,
+    onGoToWallet: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = WispThemeColors.backgroundColor,
+            tonalElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.zap_other_ways_to_pay),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    targets.forEach { target ->
+                        PaymentTargetChip(target) { onTargetClick(target) }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                if (showGoToWallet) {
+                    TextButton(onClick = {
+                        onDismiss()
+                        onGoToWallet()
+                    }) {
+                        Text(stringResource(R.string.zap_connect_wallet_to_zap))
+                    }
+                }
+
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentTargetChip(target: NipA3.PaymentTarget, onClick: () -> Unit) {
+    val label = buildString {
+        NipA3.symbol(target.type)?.let { append(it).append(' ') }
+        append(NipA3.displayName(target.type))
+    }
+    ZapChipButton(
+        label = label,
+        isSelected = false,
+        onClick = onClick
+    )
 }
 
 @Composable

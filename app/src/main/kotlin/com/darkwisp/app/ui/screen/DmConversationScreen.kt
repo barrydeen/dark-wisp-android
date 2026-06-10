@@ -127,7 +127,8 @@ fun DmConversationScreen(
     resolvedEmojis: Map<String, String> = emptyMap(),
     unicodeEmojis: List<String> = emptyList(),
     onOpenEmojiLibrary: (() -> Unit)? = null,
-    onEmojiUsed: ((String) -> Unit)? = null
+    onEmojiUsed: ((String) -> Unit)? = null,
+    fetchPaymentTargets: (suspend (String) -> List<com.darkwisp.app.nostr.NipA3.PaymentTarget>)? = null
 ) {
     val messages by viewModel.messages.collectAsState()
     val messageText by viewModel.messageText.collectAsState()
@@ -633,7 +634,11 @@ fun DmConversationScreen(
             onGoToWallet = {
                 zapTargetMessage = null
                 onGoToWallet()
-            }
+            },
+            recipientPubkey = zapTargetMessage?.senderPubkey,
+            recipientHasLud16 = zapTargetMessage?.senderPubkey
+                ?.let { pk -> eventRepo?.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() } } ?: true,
+            fetchPaymentTargets = fetchPaymentTargets
         )
     }
 }

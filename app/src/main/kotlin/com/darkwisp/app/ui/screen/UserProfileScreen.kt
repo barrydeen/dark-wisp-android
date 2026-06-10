@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.ui.component.Nip05Badge
+import com.darkwisp.app.ui.component.PaymentTargetSheet
 import com.darkwisp.app.ui.component.RichContent
 import com.darkwisp.app.ui.component.parseImetaTags
 import androidx.compose.material3.CircularProgressIndicator
@@ -86,6 +87,7 @@ import com.darkwisp.app.R
 import com.darkwisp.app.nostr.FollowSet
 import com.darkwisp.app.nostr.Nip02
 import com.darkwisp.app.nostr.Nip69
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.relay.RelayConfig
@@ -157,6 +159,7 @@ fun UserProfileScreen(
     zapInProgressIds: Set<String> = emptySet(),
     canPrivateZap: Boolean = false,
     fetchDmRelays: (suspend (String) -> Boolean)? = null,
+    fetchPaymentTargets: (suspend (String) -> List<NipA3.PaymentTarget>)? = null,
     ownLists: List<FollowSet> = emptyList(),
     onAddToList: ((String, String) -> Unit)? = null,
     onRemoveFromList: ((String, String) -> Unit)? = null,
@@ -232,6 +235,12 @@ fun UserProfileScreen(
     var zapAnimatingIds by remember { mutableStateOf(emptySet<String>()) }
     var zapErrorMessage by remember { mutableStateOf<String?>(null) }
 
+    val paymentTargets by viewModel.paymentTargets.collectAsState()
+    var paymentTargetSheetTarget by remember { mutableStateOf<NipA3.PaymentTarget?>(null) }
+    paymentTargetSheetTarget?.let { target ->
+        PaymentTargetSheet(target = target) { paymentTargetSheetTarget = null }
+    }
+
     var showProfileZapDialog by remember { mutableStateOf(false) }
     var profileZapStatus by remember { mutableStateOf<ProfileZapStatus>(ProfileZapStatus.Idle) }
 
@@ -276,7 +285,11 @@ fun UserProfileScreen(
                 onZap(event, amountMsats, message, isAnonymous, isPrivate)
             },
             onGoToWallet = onWallet,
-            canPrivateZap = resolvedCanPrivateZap
+            canPrivateZap = resolvedCanPrivateZap,
+            recipientPubkey = zapRecipient,
+            recipientHasLud16 = eventRepo?.getProfileData(zapRecipient)
+                ?.let { !it.lud16.isNullOrBlank() } ?: true,
+            fetchPaymentTargets = fetchPaymentTargets
         )
     }
 
@@ -290,7 +303,10 @@ fun UserProfileScreen(
                 onZapProfile?.invoke(amountMsats, message, isAnonymous)
             },
             onGoToWallet = onWallet,
-            canPrivateZap = false
+            canPrivateZap = false,
+            recipientPubkey = profilePubkey.ifEmpty { null },
+            recipientHasLud16 = profile?.let { !it.lud16.isNullOrBlank() } ?: true,
+            fetchPaymentTargets = fetchPaymentTargets
         )
     }
 
@@ -555,7 +571,9 @@ fun UserProfileScreen(
                     followingCount = followList.size,
                     followedBy = followedBy,
                     followsYou = !isOwnProfile && userPubkey != null && followList.any { it.pubkey == userPubkey },
-                    isBlocked = isBlocked
+                    isBlocked = isBlocked,
+                    paymentTargets = paymentTargets,
+                    onPaymentTargetClick = { paymentTargetSheetTarget = it }
                 )
             }
 
@@ -1130,7 +1148,9 @@ private fun ProfileHeader(
     followingCount: Int = 0,
     followedBy: List<String> = emptyList(),
     followsYou: Boolean = false,
-    isBlocked: Boolean = false
+    isBlocked: Boolean = false,
+    paymentTargets: List<NipA3.PaymentTarget> = emptyList(),
+    onPaymentTargetClick: (NipA3.PaymentTarget) -> Unit = {}
 ) {
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
 
@@ -1301,6 +1321,36 @@ private fun ProfileHeader(
                     text = lightning,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // NIP-A3 payment targets
+        paymentTargets.forEach { target ->
+            Spacer(Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onPaymentTargetClick(target) }
+            ) {
+                Text(
+                    text = NipA3.symbol(target.type) ?: "¤",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFFFC107)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = NipA3.displayName(target.type),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = target.authority,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
             }
         }

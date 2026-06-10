@@ -51,12 +51,14 @@ import com.darkwisp.app.repo.ZapPreferences
 import com.darkwisp.app.repo.RelayHintStore
 import com.darkwisp.app.repo.RelayInfoRepository
 import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.PaymentTargetRepository
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.repo.RelaySetRepository
 import com.darkwisp.app.repo.ZapSender
 import kotlinx.coroutines.Dispatchers
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Nip51
+import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.RelaySet
 import android.content.Context
 import com.darkwisp.app.nostr.Filter
@@ -197,6 +199,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     val liveStreamRepo = LiveStreamRepository()
     val notifRepo = NotificationRepository(app, pubkeyHex, muteRepo, eventRepo)
     val relayListRepo = RelayListRepository(app)
+    val paymentTargetRepo = PaymentTargetRepository(app)
     val bookmarkRepo = BookmarkRepository(app, pubkeyHex)
     val bookmarkSetRepo = BookmarkSetRepository(app, pubkeyHex)
     val relaySetRepo = RelaySetRepository(app, pubkeyHex)
@@ -293,7 +296,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
 
     val eventRouter: EventRouter = EventRouter(
         relayPool, eventRepo, contactRepo, muteRepo, notifRepo, listRepo, bookmarkRepo,
-        bookmarkSetRepo, pinRepo, blossomRepo, customEmojiRepo, relayListRepo, interestRepo, relaySetRepo,
+        bookmarkSetRepo, pinRepo, blossomRepo, customEmojiRepo, relayListRepo, paymentTargetRepo, interestRepo, relaySetRepo,
         relayScoreBoard, relayHintStore, keyRepo, dmRepo, extendedNetworkRepo, groupRepo, liveStreamRepo, metadataFetcher,
         getUserPubkey = { getUserPubkey() },
         getSigner = { signer },
@@ -764,6 +767,47 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         return relayListRepo.hasDmRelays(pubkey)
+    }
+
+    private val paymentTargetFetchAttempted =
+        java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * Returns the author's NIP-A3 payment targets, fetching their kind 10133 event
+     * on demand (write relays + indexers) the first time it's needed this session.
+     */
+    suspend fun fetchPaymentTargets(pubkey: String): List<NipA3.PaymentTarget> {
+        paymentTargetRepo.getTargets(pubkey)?.let { return it }
+        if (!paymentTargetFetchAttempted.add(pubkey)) return emptyList()
+
+        val subId = "paytgt_${pubkey.take(8)}"
+        val filter = Filter(
+            kinds = listOf(NipA3.KIND),
+            authors = listOf(pubkey),
+            limit = 1
+        )
+        outboxRouter.subscribeToUserWriteRelays(subId, pubkey, filter)
+        val reqMsg = ClientMessage.req(subId, filter)
+        for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
+            relayPool.sendToRelayOrEphemeral(url, reqMsg, skipBadCheck = true)
+        }
+
+        val result = withTimeoutOrNull(4000L) {
+            relayPool.relayEvents.first {
+                it.subscriptionId == subId && it.event.kind == NipA3.KIND && it.event.pubkey == pubkey
+            }
+        }
+
+        val closeMsg = ClientMessage.close(subId)
+        for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
+            relayPool.sendToRelay(url, closeMsg)
+        }
+        relayPool.sendToAll(closeMsg)
+
+        if (result != null) {
+            paymentTargetRepo.updateFromEvent(result.event)
+        }
+        return paymentTargetRepo.getTargets(pubkey) ?: emptyList()
     }
 
     override fun onCleared() {

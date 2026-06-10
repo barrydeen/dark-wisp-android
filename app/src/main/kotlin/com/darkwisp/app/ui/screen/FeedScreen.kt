@@ -547,7 +547,12 @@ fun FeedScreen(
                 viewModel.sendZap(event, amountMsats, message, isAnonymous, isPrivate)
             },
             onGoToWallet = onWallet,
-            canPrivateZap = userHasDmRelays && recipientHasDmRelays
+            canPrivateZap = userHasDmRelays && recipientHasDmRelays,
+            recipientPubkey = zapRecipient,
+            // Unknown profile -> assume zappable; the send path surfaces the error.
+            recipientHasLud16 = viewModel.eventRepo.getProfileData(zapRecipient)
+                ?.let { !it.lud16.isNullOrBlank() } ?: true,
+            fetchPaymentTargets = viewModel::fetchPaymentTargets
         )
     }
 

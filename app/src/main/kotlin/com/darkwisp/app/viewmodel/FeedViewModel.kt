@@ -280,7 +280,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
             else -> nwcRepo
         }
 
-    val zapSender = ZapSender(keyRepo, { activeWalletProvider }, relayPool, relayListRepo, HttpClientFactory.createRelayClient(), interfacePrefs)
+    val zapSender = ZapSender(keyRepo, { activeWalletProvider }, relayPool, relayListRepo, { HttpClientFactory.getGeneralClient() }, interfacePrefs)
     val powManager = PowManager(powPrefs, relayPool, outboxRouter, eventRepo, viewModelScope)
 
     // -- Manager classes --
@@ -429,6 +429,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
 
     // -- Startup delegates --
     fun initRelays() = startup.initRelays()
+    fun setTorEnabled(enabled: Boolean) = startup.setTorEnabled(enabled)
     fun resetForAccountSwitch() {
         startup.resetForAccountSwitch()
         groupRepo.clear()
@@ -492,7 +493,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun tryConnect(url: String): Boolean {
         val client = HttpClientFactory.createRelayClient()
-        val relay = Relay(RelayConfig(url, read = true, write = false), client)
+        val relay = Relay(RelayConfig(url, read = true, write = false), { client })
         relay.autoReconnect = false
         return try {
             relay.connect()

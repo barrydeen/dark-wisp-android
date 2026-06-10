@@ -3,12 +3,16 @@ package com.darkwisp.app.repo
 import android.content.Context
 import android.util.Log
 import com.darkwisp.app.relay.HttpClientFactory
+import com.darkwisp.app.relay.TorManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.doubleOrNull
@@ -76,6 +80,15 @@ object ExchangeRateRepository {
         appContext = context.applicationContext
         loadCached()
         refresh()
+        // The init-time fetch fails closed while Tor is bootstrapping; refetch
+        // once the route settles (Tor up, or toggled off back to clearnet).
+        scope.launch {
+            TorManager.state
+                .filter { it is TorManager.State.On || it is TorManager.State.Off }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { refresh() }
+        }
     }
 
     fun refresh() {

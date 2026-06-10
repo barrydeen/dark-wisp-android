@@ -661,7 +661,8 @@ fun WispNavHost(
                 },
                 onLogIn = {
                     navController.navigate(Routes.AUTH)
-                }
+                },
+                onToggleTor = { feedViewModel.setTorEnabled(it) }
             )
         }
 
@@ -709,7 +710,8 @@ fun WispNavHost(
                             popUpTo(Routes.AUTH) { inclusive = true }
                         }
                     }
-                }
+                },
+                onToggleTor = { feedViewModel.setTorEnabled(it) }
             )
         }
 

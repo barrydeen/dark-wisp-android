@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -81,6 +83,7 @@ import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.R
+import com.darkwisp.app.relay.TorManager
 import com.darkwisp.app.ui.component.NoteActions
 import com.darkwisp.app.ui.component.EmojiLibrarySheet
 import com.darkwisp.app.ui.component.pendingEmojiReactCallback
@@ -648,6 +651,13 @@ fun FeedScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
+            val torState by TorManager.state.collectAsState()
+            val torContext = LocalContext.current
+            // The Tor foreground service runs without this permission; requesting it
+            // just makes the status notification visible on API 33+.
+            val notifPermLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) {}
             WispDrawerContent(
                 profile = userProfile,
                 pubkey = userPubkey,
@@ -732,6 +742,18 @@ fun FeedScreen(
                 onLogout = {
                     scope.launch { drawerState.close() }
                     onLogout()
+                },
+                torState = torState,
+                onToggleTor = {
+                    val enable = torState is TorManager.State.Off || torState is TorManager.State.Error
+                    if (enable && android.os.Build.VERSION.SDK_INT >= 33 &&
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                            torContext, android.Manifest.permission.POST_NOTIFICATIONS
+                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    viewModel.setTorEnabled(enable)
                 },
                 hasEmbeddedWallet = hasEmbeddedWallet,
                 userStatus = statusVersion.let { userPubkey?.let { viewModel.eventRepo.getUserStatus(it) } },

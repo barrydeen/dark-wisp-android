@@ -45,7 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.darkwisp.app.R
+import com.darkwisp.app.ui.component.TorCornerButton
 import com.darkwisp.app.viewmodel.LiveMetrics
 import com.darkwisp.app.viewmodel.SplashViewModel
 
@@ -56,7 +58,8 @@ private val AVATAR_GAP = 4.dp
 fun SplashScreen(
     viewModel: SplashViewModel,
     onSignUp: () -> Unit,
-    onLogIn: () -> Unit
+    onLogIn: () -> Unit,
+    onToggleTor: (Boolean) -> Unit = {}
 ) {
     val profilePictures by viewModel.profilePictures.collectAsState()
     val liveMetrics by viewModel.liveMetrics.collectAsState()
@@ -199,6 +202,14 @@ fun SplashScreen(
                 Text(stringResource(R.string.splash_log_in))
             }
         }
+
+        TorCornerButton(
+            onToggle = onToggleTor,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(8.dp)
+        )
     }
 }
 

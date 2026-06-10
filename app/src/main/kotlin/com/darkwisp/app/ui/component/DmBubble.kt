@@ -766,13 +766,10 @@ private fun formatTime(epoch: Long): String {
 /** In-memory LRU cache for decrypted media bitmaps. ~32 MB max. */
 private val decryptedBitmapCache = LruCache<String, Bitmap>(32)
 
-private val mediaHttpClient by lazy {
-    com.darkwisp.app.relay.HttpClientFactory.createHttpClient(
-        connectTimeoutSeconds = 15,
-        readTimeoutSeconds = 60,
-        writeTimeoutSeconds = 15
-    )
-}
+// Per-access getter (not lazy): the factory invalidates its cached clients on a
+// Tor toggle, and a lazy here would pin the pre-toggle client forever.
+private val mediaHttpClient
+    get() = com.darkwisp.app.relay.HttpClientFactory.getDmMediaClient()
 
 @Composable
 private fun EncryptedMediaContent(

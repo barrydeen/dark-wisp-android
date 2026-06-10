@@ -79,6 +79,8 @@ android {
         // smallest download (44MB vs 82MB measured on 1.0.0 vs 1.0.2). The uncompressed
         // 16KB page-size packaging is only required for Google Play; revisit if Play
         // distribution or 16KB-kernel devices ever matter.
+        // Also load-bearing for kmp-tor: its exec loader needs libtor.so extracted to
+        // nativeLibraryDir (W^X: app storage is non-executable on targetSdk 29+).
         jniLibs.useLegacyPackaging = true
     }
 
@@ -127,6 +129,9 @@ dependencies {
     implementation(libs.objectbox.android)
     implementation(libs.objectbox.kotlin)
     implementation(libs.breez.sdk.spark)
+    implementation(libs.kmp.tor.runtime)
+    implementation(libs.kmp.tor.runtime.service.ui)
+    implementation(libs.kmp.tor.resource.exec)
     implementation(libs.mlkit.barcode)
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)

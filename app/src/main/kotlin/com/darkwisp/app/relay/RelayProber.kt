@@ -105,7 +105,7 @@ object RelayProber {
 
         for (bootstrapUrl in BOOTSTRAP) {
             try {
-                val relay = Relay(RelayConfig(bootstrapUrl, read = true, write = false), client)
+                val relay = Relay(RelayConfig(bootstrapUrl, read = true, write = false), { client })
                 relay.autoReconnect = false
                 relay.connect()
 
@@ -230,7 +230,7 @@ object RelayProber {
 
         // Ephemeral write test: connect, send kind 20242, await OK
         return try {
-            val relay = Relay(RelayConfig(url, read = true, write = true), wsClient)
+            val relay = Relay(RelayConfig(url, read = true, write = true), { wsClient })
             relay.autoReconnect = false
             relay.connect()
 

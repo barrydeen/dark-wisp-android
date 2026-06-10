@@ -35,7 +35,9 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
     @Volatile var reconnectGeneration: Long = 0
         private set
 
-    private var client: OkHttpClient = Relay.createClient()
+    /** Resolved by each Relay on every (re)connect, so a Tor toggle's rebuilt
+     *  client is picked up without recreating Relay instances. */
+    private val clientProvider: () -> OkHttpClient = { HttpClientFactory.getRelayClient() }
     private val relays = CopyOnWriteArrayList<Relay>()
     private val dmRelays = CopyOnWriteArrayList<Relay>()
     /** Persistent connections for NIP-29 group chat relays — auto-reconnect enabled. */
@@ -263,7 +265,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
         val existingUrls = relays.map { it.config.url }.toSet()
         for (config in filtered) {
             if (config.url !in existingUrls) {
-                val relay = Relay(config, client, scope)
+                val relay = Relay(config, clientProvider, scope)
                 wireByteTracking(relay)
                 relays.add(relay)
                 relayIndex[config.url] = relay
@@ -294,7 +296,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
                     activeSubscriptions.getOrPut(url) { java.util.concurrent.ConcurrentHashMap() }
                         .putAll(templateSubs)
                 }
-                val relay = Relay(RelayConfig(url, read = true, write = true), client, scope)
+                val relay = Relay(RelayConfig(url, read = true, write = true), clientProvider, scope)
                 wireByteTracking(relay)
                 dmRelays.add(relay)
                 relayIndex[url] = relay
@@ -318,7 +320,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
         // will skip the group relay fast-path and send REQs on the disconnected ephemeral.
         ephemeralRelays.remove(url)?.disconnect()
         ephemeralLastUsed.remove(url)
-        val relay = Relay(RelayConfig(url, read = true, write = true), client, scope)
+        val relay = Relay(RelayConfig(url, read = true, write = true), clientProvider, scope)
         // autoReconnect defaults to true — subscriptions will be re-sent on reconnect
         wireByteTracking(relay)
         groupRelays[url] = relay
@@ -850,7 +852,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
         if (ephemeralRelays.containsKey(url) || relayIndex.containsKey(url)) return
         if (ephemeralRelays.size >= MAX_EPHEMERAL) return
         ephemeralRelays.computeIfAbsent(url) {
-            val relay = Relay(RelayConfig(url, read = true, write = false), client, scope)
+            val relay = Relay(RelayConfig(url, read = true, write = false), clientProvider, scope)
             relay.autoReconnect = false
             wireByteTracking(relay)
             relayIndex[url] = relay
@@ -920,7 +922,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
         var isNew = false
         val ephemeral = ephemeralRelays.computeIfAbsent(url) {
             isNew = true
-            val relay = Relay(RelayConfig(url, read = true, write = write), client, scope)
+            val relay = Relay(RelayConfig(url, read = true, write = write), clientProvider, scope)
             relay.autoReconnect = autoReconnect
             wireByteTracking(relay)
             relayIndex[url] = relay
@@ -1023,7 +1025,49 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
             message.contains("unknown message", ignoreCase = true)
     }
 
+    /** Loopback/LAN hosts get the never-proxied client — Tor refuses private
+     *  network targets, and they can't leak the user's IP anyway. */
+    private fun clientProviderFor(url: String): () -> OkHttpClient {
+        val host = url.substringAfter("://").substringBefore("/").substringBefore(":")
+        val isPrivate = host == "localhost" || host == "127.0.0.1" || host == "[::1]" ||
+            host.startsWith("10.") || host.startsWith("192.168.") ||
+            Regex("^172\\.(1[6-9]|2\\d|3[01])\\.").containsMatchIn(host)
+        return if (isPrivate) ({ HttpClientFactory.getLoopbackClient() }) else clientProvider
+    }
+
+    /** True while a Tor toggle is replacing the relay client — blocks reconnect
+     *  storms against a SOCKS port that isn't up yet (which would trip the
+     *  per-relay 5-minute connection-attempt cooldown). */
+    @Volatile var torSwitchInProgress = false
+        private set
+
+    /** Immediately tears down every WebSocket and suppresses all reconnect paths.
+     *  Call before starting/stopping the Tor daemon. */
+    fun suspendForTorSwitch() {
+        torSwitchInProgress = true
+        val all = relays + dmRelays + groupRelays.values + ephemeralRelays.values + listOfNotNull(localRelay)
+        for (relay in all) {
+            relay.reconnectEnabled = false
+            relay.forceDisconnect()
+        }
+        updateConnectedCount()
+        Log.d("RLC", "[Pool] suspendForTorSwitch — dropped ${all.size} relay sockets")
+    }
+
+    /** Re-enables connections after a Tor switch; relays resolve the new client
+     *  through their provider on connect. */
+    fun resumeAfterTorSwitch() {
+        torSwitchInProgress = false
+        localRelay?.let { if (it.config.url == localRelayConfig?.url) { it.reconnectEnabled = true; it.connect() } }
+        reconnectAll()
+        Log.d("RLC", "[Pool] resumeAfterTorSwitch — reconnect issued")
+    }
+
     fun reconnectAll(): Int {
+        if (torSwitchInProgress) {
+            Log.d("RLC", "[Pool] reconnectAll() skipped — Tor switch in progress")
+            return 0
+        }
         Log.d("RLC", "[Pool] reconnectAll() START — persistent=${relays.size} dm=${dmRelays.size} ephemeral=${ephemeralRelays.size} activeSubs=${activeSubscriptions.size}")
         reconnectGeneration++
         isReconnecting = true
@@ -1088,6 +1132,10 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
      * subscriptions have been silently dropped.
      */
     fun forceReconnectAll() {
+        if (torSwitchInProgress) {
+            Log.d("RLC", "[Pool] forceReconnectAll() skipped — Tor switch in progress")
+            return
+        }
         Log.d("RLC", "[Pool] forceReconnectAll() START — persistent=${relays.size} dm=${dmRelays.size} ephemeral=${ephemeralRelays.size}")
         reconnectGeneration++
         isReconnecting = true
@@ -1202,7 +1250,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
         if (!RelayConfig.isValidUrl(url) && !RelayConfig.isLocalRelayUrl(url)) return
         if (ephemeralRelays.containsKey(url)) return
         if (ephemeralRelays.size >= MAX_EPHEMERAL) return
-        val relay = Relay(RelayConfig(url, read = true, write = false), client, scope)
+        val relay = Relay(RelayConfig(url, read = true, write = false), clientProvider, scope)
         relay.autoReconnect = false
         wireByteTracking(relay)
         relayIndex[url] = relay
@@ -1309,7 +1357,7 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
 
         // Create new local relay connection
         val relayConfig = RelayConfig(config.url, read = true, write = true)
-        val relay = Relay(relayConfig, client)
+        val relay = Relay(relayConfig, clientProviderFor(config.url))
         localRelay = relay
         relayIndex[config.url] = relay
         collectMessages(relay)

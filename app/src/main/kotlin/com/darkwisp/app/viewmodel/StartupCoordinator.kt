@@ -225,7 +225,6 @@ class StartupCoordinator(
         relayPool.updateRelays(initialRelays)
         val dmRelays = keyRepo.getDmRelays()
         relayPool.updateDmRelays(dmRelays)
-        eventRepo.dmRelayUrls = dmRelays.toSet()
 
         // Connect local relay if configured
         relayPool.updateLocalRelay(keyRepo.getLocalRelay(), getUserPubkey())
@@ -987,7 +986,6 @@ class StartupCoordinator(
         relayPool.updateRelays(relays)
         val dmRelays = keyRepo.getDmRelays()
         relayPool.updateDmRelays(dmRelays)
-        eventRepo.dmRelayUrls = dmRelays.toSet()
         feedSub.subscribeFeed()
     }
 }

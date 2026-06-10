@@ -358,12 +358,20 @@ fun WispNavHost(
 
     // Initialize compose viewmodel with shared repos
     LaunchedEffect(Unit) {
-        composeViewModel.init(feedViewModel.profileRepo, feedViewModel.contactRepo, feedViewModel.relayPool, feedViewModel.eventRepo, feedViewModel.eventPersistence)
+        composeViewModel.init(
+            feedViewModel.profileRepo,
+            feedViewModel.contactRepo,
+            feedViewModel.relayPool,
+            feedViewModel.eventRepo,
+            feedViewModel.eventPersistence,
+            feedViewModel.dmRepo,
+            feedViewModel.relayListRepo
+        )
     }
 
     // Initialize DM list viewmodel with shared repo
     LaunchedEffect(Unit) {
-        dmListViewModel.init(feedViewModel.dmRepo, feedViewModel.muteRepo)
+        dmListViewModel.init(feedViewModel.dmRepo, feedViewModel.muteRepo, feedViewModel.eventRepo, feedViewModel.notifRepo)
     }
 
     // Initialize group list viewmodel with shared repo; key changes on account switch to re-init
@@ -1351,7 +1359,7 @@ fun WispNavHost(
                     powPreferences = feedViewModel.powPrefs,
                     myPubkeyHex = userPubkey
                 )
-                activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo) }
+                activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo, feedViewModel.eventRepo, feedViewModel.notifRepo) }
             }
             val peerProfile = feedViewModel.eventRepo.getProfileData(pubkey)
             val userProfile = userPubkey?.let { feedViewModel.eventRepo.getProfileData(it) }
@@ -1434,7 +1442,7 @@ fun WispNavHost(
                     myPubkeyHex = userPubkey,
                     participantPubkeys = participantList
                 )
-                activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo) }
+                activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo, feedViewModel.eventRepo, feedViewModel.notifRepo) }
                 for (pubkey in participantList) {
                     feedViewModel.metadataFetcher.queueProfileFetch(pubkey)
                 }
@@ -3148,6 +3156,24 @@ fun WispNavHost(
                         val tags = com.darkwisp.app.nostr.Nip10.buildReplyTags(replyToEvent, hint) +
                             com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(content, notifResolvedEmojis) +
                             if (notifInterfacePrefs.isClientTagEnabled()) listOf(listOf("client", "Dark Wisp")) else emptyList()
+
+                        // If the parent is a private reply we received, keep the thread encrypted
+                        // by gift-wrapping this reply too. Otherwise fall through to the public path.
+                        if (feedViewModel.eventRepo.isPrivateReply(replyToEvent.id)) {
+                            val difficulty = if (feedViewModel.powPrefs.isNotePowEnabled()) feedViewModel.powPrefs.getNoteDifficulty() else 0
+                            com.darkwisp.app.repo.PrivateReplyPublisher.send(
+                                signer = signer,
+                                relayPool = feedViewModel.relayPool,
+                                dmRepo = feedViewModel.dmRepo,
+                                relayListRepo = feedViewModel.relayListRepo,
+                                eventRepo = feedViewModel.eventRepo,
+                                replyTo = replyToEvent,
+                                content = content,
+                                baseTags = tags,
+                                targetDifficulty = difficulty
+                            )
+                            return@launch
+                        }
 
                         if (feedViewModel.powPrefs.isNotePowEnabled()) {
                             feedViewModel.powManager.submitNote(

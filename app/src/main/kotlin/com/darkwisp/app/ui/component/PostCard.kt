@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -140,6 +141,7 @@ fun PostCard(
     onBlockAuthor: () -> Unit = {},
     isFollowingAuthor: Boolean = false,
     isOwnEvent: Boolean = false,
+    isPrivate: Boolean = false,
     nip05Repo: Nip05Repository? = null,
     onAddToList: () -> Unit = {},
     isInList: Boolean = false,
@@ -339,6 +341,15 @@ fun PostCard(
                         onClick = onProfileClick
                     )
                 }
+            }
+            if (isPrivate) {
+                Icon(
+                    imageVector = Icons.Outlined.VisibilityOff,
+                    contentDescription = "Private reply",
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFFFF8C00)
+                )
+                Spacer(Modifier.width(4.dp))
             }
             Text(
                 text = timestamp,
@@ -789,6 +800,7 @@ fun PostCard(
                 resolvedEmojis = resolvedEmojis,
                 unicodeEmojis = unicodeEmojis,
                 onOpenEmojiLibrary = onOpenEmojiLibrary,
+                isPrivate = isPrivate,
                 modifier = Modifier.weight(1f)
             )
             Icon(

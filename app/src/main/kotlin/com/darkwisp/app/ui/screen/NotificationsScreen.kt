@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FormatQuote
@@ -684,6 +685,15 @@ private fun ZenNotificationRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
                     )
+                    if (item.isPrivateReply) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Outlined.VisibilityOff,
+                            contentDescription = "Private reply",
+                            modifier = Modifier.size(14.dp),
+                            tint = androidx.compose.ui.graphics.Color(0xFFFF8C00)
+                        )
+                    }
                 }
                 // Show voted option labels for NIP-88 polls
                 if (item.type == NotificationType.VOTE && item.voteOptionIds.isNotEmpty()) {

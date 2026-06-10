@@ -738,6 +738,7 @@ class NotificationRepository(
                 referencedEventId = replyTarget,
                 timestamp = event.created_at,
                 replyEventId = event.id,
+                isPrivateReply = eventRepo?.isPrivateReply(event.id) == true,
                 groupChatId = groupChatId
             ))
         }

@@ -84,6 +84,7 @@ fun ActionBar(
     resolvedEmojis: Map<String, String> = emptyMap(),
     unicodeEmojis: List<String> = emptyList(),
     onOpenEmojiLibrary: (() -> Unit)? = null,
+    isPrivate: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -107,6 +108,9 @@ fun ActionBar(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1
         )
+        // Private replies hide React / Repost / Quote / Zap to avoid leaking the rumor id
+        // on public relays. Reply (above) and Bookmark (below) remain available.
+        if (!isPrivate) {
         Spacer(Modifier.width(8.dp))
         Box {
             Box(
@@ -243,6 +247,7 @@ fun ActionBar(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        } // end !isPrivate
         Spacer(Modifier.width(8.dp))
         IconButton(onClick = onAddToList) {
             Icon(

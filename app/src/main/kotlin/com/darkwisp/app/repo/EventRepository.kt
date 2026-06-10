@@ -46,6 +46,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val eventCache = ConcurrentHashMap<String, NostrEvent>()
     private val seenEventIds = ConcurrentHashMap.newKeySet<String>()  // thread-safe dedup that doesn't evict
 
+    // NIP-17 private replies: event IDs (= rumor IDs) of kind 1 notes received via gift wrap.
+    // Screens read this to show a lock indicator next to the reply.
+    private val privateReplyIds = ConcurrentHashMap.newKeySet<String>()
+
+    fun markPrivateReply(eventId: String) { privateReplyIds.add(eventId) }
+    fun isPrivateReply(eventId: String): Boolean = eventId in privateReplyIds
+
     /** Emits event IDs that were removed (e.g. via NIP-09 deletion). Screens like ThreadScreen
      *  observe this to prune their local state when a deletion arrives on any subscription. */
     private val _removedEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
@@ -1421,6 +1428,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         resetFeedDisplay()
         eventCache.clear()
         seenEventIds.clear()
+        privateReplyIds.clear()
     }
 
     fun clearAll() {

@@ -623,6 +623,13 @@ class EventRouter(
             return
         }
 
+        // NIP-17 private reply — kind 1 rumor with NIP-10 reply tags.
+        // Surface as a normal reply in threads + notifications, flagged as private.
+        if (rumor.kind == 1) {
+            handlePrivateReply(event, rumor, myPubkey)
+            return
+        }
+
         val participants = Nip17.getConversationParticipants(rumor, myPubkey)
         if (participants.any { muteRepo.isBlocked(it) }) return
 
@@ -649,5 +656,16 @@ class EventRouter(
             debugRumorJson = Nip17.rumorToJson(rumor)
         )
         dmRepo.addMessage(msg, convKey)
+    }
+
+    private fun handlePrivateReply(wrap: NostrEvent, rumor: Nip17.Rumor, myPubkey: String) {
+        com.darkwisp.app.repo.PrivateRumorHandler.handlePrivateReply(
+            rumor = rumor,
+            myPubkey = myPubkey,
+            eventRepo = eventRepo,
+            notifRepo = notifRepo,
+            muteRepo = muteRepo,
+            onMissingProfile = { metadataFetcher.addToPendingProfiles(it) }
+        )
     }
 }

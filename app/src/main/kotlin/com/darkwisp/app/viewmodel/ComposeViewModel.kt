@@ -31,12 +31,15 @@ import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.ContactRepository
+import com.darkwisp.app.repo.DmRepository
 import com.darkwisp.app.repo.KeyRepository
+import com.darkwisp.app.repo.PrivateReplyPublisher
 import com.darkwisp.app.repo.MentionCandidate
 import com.darkwisp.app.repo.MentionSearchRepository
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.repo.ProfileRepository
+import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.R
 import com.darkwisp.app.ui.util.GifToMp4Converter
 import com.darkwisp.app.ui.util.MediaCompressor
@@ -114,6 +117,27 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
 
     fun toggleExplicit() {
         _explicit.value = !_explicit.value
+    }
+
+    private val _privateReply = MutableStateFlow(false)
+    val privateReply: StateFlow<Boolean> = _privateReply
+
+    // Locked = the user is replying to a private reply, so the new reply must also be private
+    // (sending publicly would attach an e-tag to the rumor id on public relays, leaking metadata).
+    private val _privateReplyLocked = MutableStateFlow(false)
+    val privateReplyLocked: StateFlow<Boolean> = _privateReplyLocked
+
+    fun togglePrivateReply() {
+        if (_privateReplyLocked.value) return
+        _privateReply.value = !_privateReply.value
+    }
+
+    /** Called by ComposeScreen when the screen mounts with [replyTo]; auto-enables
+     *  + locks the private toggle if [replyTo] is itself a private reply we received. */
+    fun configureForReply(replyTo: NostrEvent?) {
+        val isReplyingToPrivate = replyTo != null && eventRepo?.isPrivateReply(replyTo.id) == true
+        _privateReplyLocked.value = isReplyingToPrivate
+        if (isReplyingToPrivate) _privateReply.value = true
     }
 
     private val _powEnabled = MutableStateFlow(false)
@@ -236,15 +260,27 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
     private var pendingPublish: (() -> Unit)? = null
     private var mentionSearchRepo: MentionSearchRepository? = null
     private var eventRepo: EventRepository? = null
+    private var dmRepo: DmRepository? = null
+    private var relayListRepo: RelayListRepository? = null
     private var initialized = false
 
     var currentDraftId: String? = null
         private set
 
-    fun init(profileRepo: ProfileRepository, contactRepo: ContactRepository, relayPool: RelayPool, eventRepo: EventRepository? = null, eventPersistence: com.darkwisp.app.db.EventPersistence? = null) {
+    fun init(
+        profileRepo: ProfileRepository,
+        contactRepo: ContactRepository,
+        relayPool: RelayPool,
+        eventRepo: EventRepository? = null,
+        eventPersistence: com.darkwisp.app.db.EventPersistence? = null,
+        dmRepo: DmRepository? = null,
+        relayListRepo: RelayListRepository? = null
+    ) {
         if (initialized) return
         initialized = true
         this.eventRepo = eventRepo
+        this.dmRepo = dmRepo
+        this.relayListRepo = relayListRepo
         mentionSearchRepo = MentionSearchRepository(profileRepo, contactRepo, relayPool, keyRepo).also {
             it.eventPersistence = eventPersistence
         }
@@ -488,6 +524,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         signer: NostrSigner? = null,
         onNotePublished: (() -> Unit)? = null,
         powManager: PowManager? = null,
+        powPrefs: com.darkwisp.app.repo.PowPreferences? = null,
         resolvedEmojis: Map<String, String> = emptyMap()
     ) {
         val rawText = _content.value.text
@@ -531,7 +568,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (!useTimer || timerSeconds <= 0) {
             viewModelScope.launch {
                 try {
-                    val sentCount = publishNote(text, s, relayPool, replyTo, quoteTo, outboxRouter, powManager, resolvedEmojis)
+                    val sentCount = publishNote(text, s, relayPool, replyTo, quoteTo, outboxRouter, powManager, powPrefs, resolvedEmojis)
                     if (sentCount == 0) return@launch
                     onNotePublished?.invoke()
                     onSuccess()
@@ -542,7 +579,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             }
             return
         }
-        startCountdown(text, s, relayPool, replyTo, quoteTo, outboxRouter, onSuccess, onNotePublished, powManager, resolvedEmojis, timerSeconds)
+        startCountdown(text, s, relayPool, replyTo, quoteTo, outboxRouter, onSuccess, onNotePublished, powManager, powPrefs, resolvedEmojis, timerSeconds)
     }
 
     private fun startCountdown(
@@ -555,6 +592,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         onSuccess: () -> Unit,
         onNotePublished: (() -> Unit)? = null,
         powManager: PowManager? = null,
+        powPrefs: com.darkwisp.app.repo.PowPreferences? = null,
         resolvedEmojis: Map<String, String> = emptyMap(),
         seconds: Int = 10
     ) {
@@ -562,7 +600,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         pendingPublish = {
             viewModelScope.launch {
                 try {
-                    val sentCount = publishNote(content, signer, relayPool, replyTo, quoteTo, outboxRouter, powManager, resolvedEmojis)
+                    val sentCount = publishNote(content, signer, relayPool, replyTo, quoteTo, outboxRouter, powManager, powPrefs, resolvedEmojis)
                     if (sentCount == 0) return@launch
                     onNotePublished?.invoke()
                     onSuccess()
@@ -610,6 +648,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         quoteTo: NostrEvent? = null,
         outboxRouter: OutboxRouter? = null,
         powManager: PowManager? = null,
+        powPrefs: com.darkwisp.app.repo.PowPreferences? = null,
         resolvedEmojis: Map<String, String> = emptyMap()
     ): Int {
         val tags = mutableListOf<List<String>>()
@@ -628,6 +667,18 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 tags.add(listOf("p", pubkey))
             }
         }
+
+        // NIP-17 private reply: gift-wrap to the recipient's DM relays instead of publishing
+        // publicly. The compose UI hides the toggle in gallery/poll/schedule/quote modes, so we
+        // branch before those tag-building paths and emit just the reply + mentions + hashtags
+        // + emojis inside the encrypted rumor.
+        if (replyTo != null && _privateReply.value) {
+            for (hashtag in _hashtags.value) tags.add(listOf("t", hashtag))
+            tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
+            if (interfacePrefs.isClientTagEnabled()) tags.add(listOf("client", "Dark Wisp"))
+            return publishPrivateReply(content, replyTo, tags, signer, relayPool, powPrefs)
+        }
+
         val finalContent = if (quoteTo != null) {
             val quoteHint = outboxRouter?.getRelayHint(quoteTo.pubkey) ?: ""
             tags.addAll(Nip18.buildQuoteTags(quoteTo, quoteHint))
@@ -853,6 +904,61 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         return sentCount
     }
 
+    private suspend fun publishPrivateReply(
+        content: String,
+        replyTo: NostrEvent,
+        replyTags: List<List<String>>,
+        signer: NostrSigner,
+        relayPool: RelayPool,
+        powPrefs: com.darkwisp.app.repo.PowPreferences? = null
+    ): Int {
+        val dmRepoLocal = dmRepo
+        if (dmRepoLocal == null) {
+            _error.value = getApplication<Application>().getString(R.string.error_publish_failed, "DM repo unavailable")
+            _publishing.value = false
+            return 0
+        }
+
+        val difficulty = if (_powEnabled.value && powPrefs != null) powPrefs.getNoteDifficulty() else 0
+
+        val result = try {
+            PrivateReplyPublisher.send(
+                signer = signer,
+                relayPool = relayPool,
+                dmRepo = dmRepoLocal,
+                relayListRepo = relayListRepo,
+                eventRepo = eventRepo,
+                replyTo = replyTo,
+                content = content,
+                baseTags = replyTags,
+                targetDifficulty = difficulty
+            )
+        } catch (e: Exception) {
+            _error.value = getApplication<Application>().getString(R.string.error_publish_failed, e.message ?: "wrap failed")
+            _publishing.value = false
+            return 0
+        }
+
+        if (result.sentCount == 0) {
+            _error.value = getApplication<Application>().getString(R.string.error_no_relays_connected)
+            _publishing.value = false
+            return 0
+        }
+
+        deleteDraftOnPublish(relayPool, signer)
+        _content.value = TextFieldValue()
+        _mentions.value = emptyList()
+        savedStateHandle.remove<String>("draft_content")
+        savedStateHandle.remove<Array<String>>("draft_mentions")
+        _uploadedUrls.value = emptyList()
+        _uploadedMediaMeta.clear()
+        _error.value = null
+        _publishing.value = false
+        _privateReply.value = false
+
+        return result.sentCount
+    }
+
     private fun saveMentionsToState() {
         savedStateHandle["draft_mentions"] = _mentions.value.map { "${it.start},${it.end},${it.pubkey}" }.toTypedArray()
     }
@@ -1065,6 +1171,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         _explicit.value = false
         _hashtags.value = emptyList()
         _powEnabled.value = false
+        _privateReply.value = false
+        _privateReplyLocked.value = false
         _galleryMode.value = false
         _galleryHasVideo.value = false
         _uploadedMediaMeta.clear()

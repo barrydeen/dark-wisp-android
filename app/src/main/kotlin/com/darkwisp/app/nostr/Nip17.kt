@@ -140,7 +140,7 @@ object Nip17 {
             // Parse rumor
             val rumorObj = json.parseToJsonElement(rumorJson).jsonObject
             val kind = rumorObj["kind"]?.jsonPrimitive?.content?.toIntOrNull()
-            if (kind != 14 && kind != 7 && kind != 15) return null
+            if (kind != 14 && kind != 7 && kind != 15 && kind != 1) return null
 
             val tags = rumorObj["tags"]?.jsonArray?.map { tagArr ->
                 tagArr.jsonArray.map { it.jsonPrimitive.content }
@@ -269,7 +269,7 @@ object Nip17 {
             // Parse rumor
             val rumorObj = json.parseToJsonElement(rumorJson).jsonObject
             val kind = rumorObj["kind"]?.jsonPrimitive?.content?.toIntOrNull()
-            if (kind != 14 && kind != 7 && kind != 15) return null
+            if (kind != 14 && kind != 7 && kind != 15 && kind != 1) return null
 
             val tags = rumorObj["tags"]?.jsonArray?.map { tagArr ->
                 tagArr.jsonArray.map { it.jsonPrimitive.content }

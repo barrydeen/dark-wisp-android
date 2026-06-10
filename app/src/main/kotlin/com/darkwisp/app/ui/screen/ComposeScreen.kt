@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Schedule
@@ -180,6 +181,12 @@ fun ComposeScreen(
     val zapPollConsensus by viewModel.zapPollConsensus.collectAsState()
     val scheduleEnabled by viewModel.scheduleEnabled.collectAsState()
     val scheduleTimestamp by viewModel.scheduleTimestamp.collectAsState()
+    val privateReply by viewModel.privateReply.collectAsState()
+    val privateReplyLocked by viewModel.privateReplyLocked.collectAsState()
+
+    LaunchedEffect(replyTo) {
+        viewModel.configureForReply(replyTo)
+    }
     val powStatus = powManager?.status?.collectAsState()?.value ?: PowStatus.Idle
     val isMiningBusy = powStatus is PowStatus.Mining
     val context = LocalContext.current
@@ -332,7 +339,11 @@ fun ComposeScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { viewModel.toggleExplicit() }) {
+                        IconButton(onClick = {
+                            val nextState = !explicit
+                            viewModel.toggleExplicit()
+                            android.widget.Toast.makeText(context, "NSFW ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                        }) {
                             Icon(
                                 Icons.Outlined.Warning,
                                 contentDescription = "Mark as explicit",
@@ -341,7 +352,14 @@ fun ComposeScreen(
                             )
                         }
 
-                        IconButton(onClick = { powPrefs?.let { viewModel.togglePow(it) } }) {
+                        IconButton(onClick = {
+                            val prefs = powPrefs
+                            if (prefs != null) {
+                                val nextState = !powEnabled
+                                viewModel.togglePow(prefs)
+                                android.widget.Toast.makeText(context, "Mining ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
                             Icon(
                                 Icons.Outlined.Shield,
                                 contentDescription = "Proof of Work",
@@ -726,7 +744,11 @@ fun ComposeScreen(
                             Icon(Icons.Outlined.Image, contentDescription = "Attach media")
                         }
 
-                        IconButton(onClick = { viewModel.toggleExplicit() }) {
+                        IconButton(onClick = {
+                            val nextState = !explicit
+                            viewModel.toggleExplicit()
+                            android.widget.Toast.makeText(context, "NSFW ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                        }) {
                             Icon(
                                 Icons.Outlined.Warning,
                                 contentDescription = "Mark as explicit",
@@ -735,7 +757,14 @@ fun ComposeScreen(
                             )
                         }
 
-                        IconButton(onClick = { powPrefs?.let { viewModel.togglePow(it) } }) {
+                        IconButton(onClick = {
+                            val prefs = powPrefs
+                            if (prefs != null) {
+                                val nextState = !powEnabled
+                                viewModel.togglePow(prefs)
+                                android.widget.Toast.makeText(context, "Mining ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
                             Icon(
                                 Icons.Outlined.Shield,
                                 contentDescription = "Proof of Work",
@@ -751,6 +780,24 @@ fun ComposeScreen(
                                 tint = if (pollEnabled) MaterialTheme.colorScheme.primary
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+
+                        // Private reply toggle: only meaningful for replies in plain text mode
+                        // (private replies don't carry gallery/poll/schedule/quote payloads in v1).
+                        if (replyTo != null && quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
+                            IconButton(onClick = {
+                                // Locked toggles short-circuit in the VM, so the state stays ON.
+                                val nextState = if (privateReplyLocked) true else !privateReply
+                                viewModel.togglePrivateReply()
+                                android.widget.Toast.makeText(context, "Private Reply ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.VisibilityOff,
+                                    contentDescription = "Private reply",
+                                    tint = if (privateReply) androidx.compose.ui.graphics.Color(0xFFFF8C00)
+                                           else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         IconButton(onClick = {
@@ -1168,6 +1215,7 @@ fun ComposeScreen(
                                 signer = signer,
                                 onNotePublished = onNotePublished,
                                 powManager = powManager,
+                                powPrefs = powPrefs,
                                 resolvedEmojis = resolvedEmojis
                             )
                         },

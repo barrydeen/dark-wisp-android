@@ -12,7 +12,10 @@ import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.toHex
 import com.darkwisp.app.repo.DmRepository
+import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
+import com.darkwisp.app.repo.NotificationRepository
+import com.darkwisp.app.repo.PrivateRumorHandler
 import com.darkwisp.app.repo.SigningMode
 import com.darkwisp.app.repo.MuteRepository
 import kotlinx.coroutines.Dispatchers
@@ -31,10 +34,29 @@ class DmListViewModel(app: Application) : AndroidViewModel(app) {
 
     private var dmRepo: DmRepository? = null
     private var muteRepo: MuteRepository? = null
+    private var eventRepo: EventRepository? = null
+    private var notifRepo: NotificationRepository? = null
 
-    fun init(dmRepository: DmRepository, muteRepository: MuteRepository? = null) {
+    fun init(
+        dmRepository: DmRepository,
+        muteRepository: MuteRepository? = null,
+        eventRepository: EventRepository? = null,
+        notificationRepository: NotificationRepository? = null
+    ) {
         dmRepo = dmRepository
         muteRepo = muteRepository
+        eventRepo = eventRepository
+        notifRepo = notificationRepository
+    }
+
+    /** Route a non-DM rumor (kind 1 private reply) out of the DM pipeline.
+     *  Returns true when the rumor was consumed. */
+    private fun routePrivateRumor(rumor: Nip17.Rumor, myPubkey: String): Boolean {
+        if (rumor.kind != 1) return false
+        val eRepo = eventRepo ?: return true   // can't materialise without repos — drop, don't misfile as DM
+        val nRepo = notifRepo ?: return true
+        PrivateRumorHandler.handlePrivateReply(rumor, myPubkey, eRepo, nRepo, muteRepo)
+        return true
     }
 
     fun markDmsRead() {
@@ -56,6 +78,9 @@ class DmListViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch(Dispatchers.Default) {
             val rumor = Nip17.unwrapGiftWrap(keypair.privkey, event) ?: return@launch
+
+            // NIP-17 private reply (kind 1 rumor) — belongs in threads, not DMs
+            if (routePrivateRumor(rumor, myPubkey)) return@launch
 
             // Private DM reaction — associate with the target message
             if (Nip17.isReaction(rumor)) {
@@ -145,6 +170,9 @@ class DmListViewModel(app: Application) : AndroidViewModel(app) {
                     val wrap = repo.takeNextPendingGiftWrap() ?: break
                     try {
                         val rumor = Nip17.unwrapGiftWrapRemote(signer, wrap.event) ?: continue
+
+                        // NIP-17 private reply (kind 1 rumor) — belongs in threads, not DMs
+                        if (routePrivateRumor(rumor, myPubkey)) continue
 
                         if (Nip17.isReaction(rumor)) {
                             val targetId = rumor.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)

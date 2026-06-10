@@ -15,7 +15,9 @@ class ZapSender(
     private val getWalletProvider: () -> WalletProvider,
     private val relayPool: RelayPool,
     private val relayListRepo: RelayListRepository,
-    private val httpClient: OkHttpClient,
+    /** Provider, not a captured client: ZapSender outlives Tor toggles and must
+     *  resolve the current client per LNURL request. */
+    private val httpClient: () -> OkHttpClient,
     private val interfacePrefs: InterfacePreferences
 ) {
     var signer: NostrSigner? = null
@@ -83,7 +85,7 @@ class ZapSender(
         eventCreatedAt: Long? = null
     ): Result<Unit> {
         // 1. LNURL discovery
-        val payInfo = Nip57.resolveLud16(recipientLud16, httpClient)
+        val payInfo = Nip57.resolveLud16(recipientLud16, httpClient())
             ?: return Result.failure(Exception("Could not resolve lightning address"))
 
         if (!payInfo.allowsNostr) {
@@ -190,7 +192,7 @@ class ZapSender(
         }
 
         // 3. Fetch invoice from LNURL callback
-        val bolt11 = Nip57.fetchInvoice(payInfo.callback, amountMsats, zapRequest, httpClient)
+        val bolt11 = Nip57.fetchInvoice(payInfo.callback, amountMsats, zapRequest, httpClient())
             ?: return Result.failure(Exception("Could not get invoice from lightning provider"))
 
         // 4. Record zap recipient for transaction history display

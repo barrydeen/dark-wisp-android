@@ -9,6 +9,7 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip47
 import com.darkwisp.app.nostr.RelayMessage
 import com.darkwisp.app.nostr.toHex
+import com.darkwisp.app.relay.HttpClientFactory
 import com.darkwisp.app.relay.Relay
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayPool
@@ -106,8 +107,9 @@ class NwcRepository(private val context: Context, private val relayPool: RelayPo
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         scope = newScope
 
-        val client = Relay.createClient()
-        val r = Relay(RelayConfig(conn.relayUrl), client, scope = newScope)
+        // Shared provider, not a captured client: the NWC relay is long-lived and
+        // must resolve the current (possibly Tor-proxied) client on every reconnect.
+        val r = Relay(RelayConfig(conn.relayUrl), { HttpClientFactory.getRelayClient() }, scope = newScope)
         relay = r
 
         emitStatus("Connecting to relay ${conn.relayUrl}...")

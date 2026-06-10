@@ -71,8 +71,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import com.darkwisp.app.nostr.ProfileData
+import com.darkwisp.app.relay.TorManager
 import com.darkwisp.app.repo.AccountInfo
+
+private val TorPurple = Color(0xFF9C59D1)
+private val TorAmber = Color(0xFFFFB74D)
+private val TorGreen = Color(0xFF4CAF50)
 
 
 @Composable
@@ -102,6 +109,8 @@ fun WispDrawerContent(
     onRelaySettings: () -> Unit,
     onInterfaceSettings: () -> Unit = {},
     onLogout: () -> Unit,
+    torState: TorManager.State = TorManager.State.Off,
+    onToggleTor: () -> Unit = {},
     hasEmbeddedWallet: Boolean = false,
     userStatus: String? = null,
     onUpdateStatus: ((String) -> Unit)? = null,
@@ -428,6 +437,44 @@ fun WispDrawerContent(
             label = { Text(stringResource(R.string.drawer_drafts)) },
             selected = false,
             onClick = onDrafts,
+            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
+        )
+        NavigationDrawerItem(
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_onion),
+                    contentDescription = stringResource(R.string.cd_tor_toggle),
+                    modifier = Modifier.size(24.dp),
+                    tint = when (torState) {
+                        is TorManager.State.On -> TorPurple
+                        is TorManager.State.Starting, TorManager.State.Stopping -> TorAmber
+                        is TorManager.State.Error -> MaterialTheme.colorScheme.error
+                        else -> androidx.compose.material3.LocalContentColor.current
+                    }
+                )
+            },
+            label = { Text(stringResource(R.string.drawer_tor)) },
+            badge = {
+                when (val s = torState) {
+                    is TorManager.State.Starting -> Text(
+                        stringResource(R.string.tor_status_connecting, s.bootstrapPercent),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TorAmber
+                    )
+                    is TorManager.State.On -> Box(
+                        Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(TorGreen)
+                    )
+                    is TorManager.State.Error -> Text(
+                        stringResource(R.string.tor_status_error),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    else -> {}
+                }
+            },
+            selected = torState is TorManager.State.On,
+            // Drawer intentionally stays open so the user can watch bootstrap progress.
+            onClick = onToggleTor,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
         var settingsExpanded by remember { mutableStateOf(false) }

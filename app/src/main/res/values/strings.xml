@@ -18,6 +18,13 @@
     <string name="drawer_media_servers">Media Servers</string>
     <string name="drawer_keys">Keys</string>
     <string name="drawer_safety">Safety</string>
+    <string name="drawer_tor">Tor</string>
+    <string name="tor_status_connecting">Connecting %1$d%%</string>
+    <string name="tor_status_on">Active</string>
+    <string name="tor_status_error">Error — tap to retry</string>
+    <string name="cd_tor_toggle">Toggle Tor</string>
+    <string name="tor_channel_name">Tor</string>
+    <string name="tor_channel_description">Status of the embedded Tor connection</string>
     <string name="drawer_proof_of_work">Proof of Work</string>
     <string name="drawer_social_graph">Social Graph</string>
     <string name="drawer_custom_emojis">Custom Emojis</string>

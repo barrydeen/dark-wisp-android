@@ -62,3 +62,8 @@
 # JNA (used by Breez SDK UniFFI)
 -keep class com.sun.jna.** { *; }
 -dontwarn com.sun.jna.**
+
+# kmp-tor (embedded Tor) — kmp-process probes JVM-only management APIs behind
+# runtime guards; the classes don't exist on Android by design.
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean

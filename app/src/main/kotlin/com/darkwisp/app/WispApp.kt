@@ -12,11 +12,16 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.darkwisp.app.db.WispObjectBox
 import com.darkwisp.app.relay.HttpClientFactory
+import com.darkwisp.app.relay.TorManager
 import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.ExchangeRateRepository
+import com.darkwisp.app.repo.TorPreferences
 import com.darkwisp.app.repo.ZapSender
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import okhttp3.Call
 
 class WispApp : Application(), SingletonImageLoader.Factory {
 
@@ -24,6 +29,18 @@ class WispApp : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         CrashHandler.install(this)
         DiagnosticLogger.init(this)
+        TorPreferences.init(this)
+        TorManager.init()
+        if (TorPreferences.isEnabled()) {
+            // Fail-closed BEFORE any repo init can touch the network: every client
+            // built from here on routes to a dead SOCKS port until Tor bootstraps.
+            HttpClientFactory.setTorSocks(HttpClientFactory.TorSocks.Pending)
+            MainScope().launch {
+                TorManager.start()?.let {
+                    HttpClientFactory.setTorSocks(HttpClientFactory.TorSocks.Ready(it))
+                }
+            }
+        }
         WispObjectBox.init(this)
         ZapSender.init(this)
         ExchangeRateRepository.init(this)
@@ -52,7 +69,12 @@ class WispApp : Application(), SingletonImageLoader.Factory {
             .components {
                 add(AnimatedImageDecoder.Factory())
                 add(VideoFrameDecoder.Factory())
-                add(OkHttpNetworkFetcherFactory(callFactory = { HttpClientFactory.getImageClient() }))
+                // Coil caches the callFactory lambda's result forever; the delegating
+                // Call.Factory re-resolves the current client per request so a Tor
+                // toggle applies to image loading without an app restart.
+                add(OkHttpNetworkFetcherFactory(callFactory = {
+                    Call.Factory { request -> HttpClientFactory.getImageClient().newCall(request) }
+                }))
             }
             .memoryCache {
                 MemoryCache.Builder()

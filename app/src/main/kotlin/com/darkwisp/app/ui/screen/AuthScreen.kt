@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -63,13 +64,15 @@ import androidx.compose.ui.res.stringResource
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.RemoteSignerBridge
 import com.darkwisp.app.nostr.toHex
+import com.darkwisp.app.ui.component.TorCornerButton
 import com.darkwisp.app.viewmodel.AuthViewModel
 
 @Composable
 fun AuthScreen(
     viewModel: AuthViewModel,
     showSignUp: Boolean = true,
-    onAuthenticated: (isNewAccount: Boolean) -> Unit
+    onAuthenticated: (isNewAccount: Boolean) -> Unit,
+    onToggleTor: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val nsecInput by viewModel.nsecInput.collectAsState()
@@ -104,130 +107,139 @@ fun AuthScreen(
         signerLoginComplete = true
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_wisp_logo),
-            contentDescription = stringResource(R.string.onboarding_wisp_logo),
-            tint = androidx.compose.ui.graphics.Color.Unspecified,
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .size(108.dp)
-                .drawBehind {
-                    drawCircle(
-                        brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                            colors = listOf(
-                                androidx.compose.ui.graphics.Color.Black,
-                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f),
-                                androidx.compose.ui.graphics.Color.Transparent
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_wisp_logo),
+                contentDescription = stringResource(R.string.onboarding_wisp_logo),
+                tint = androidx.compose.ui.graphics.Color.Unspecified,
+                modifier = Modifier
+                    .size(108.dp)
+                    .drawBehind {
+                        drawCircle(
+                            brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                                colors = listOf(
+                                    androidx.compose.ui.graphics.Color.Black,
+                                    androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f),
+                                    androidx.compose.ui.graphics.Color.Transparent
+                                ),
+                                radius = size.minDimension * 0.65f
                             ),
                             radius = size.minDimension * 0.65f
-                        ),
-                        radius = size.minDimension * 0.65f
-                    )
-                }
-        )
-        Text(
-            text = stringResource(R.string.auth_wisp),
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontFamily = FontFamily.SansSerif,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.W500
-            ),
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = stringResource(R.string.auth_tagline),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        if (showSignUp) {
-            Button(
-                onClick = {
-                    if (viewModel.signUp()) onAuthenticated(true)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.auth_sign_up))
-            }
-
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            Spacer(Modifier.height(24.dp))
-
+                        )
+                    }
+            )
             Text(
-                text = stringResource(R.string.auth_or_log_in_with_key),
+                text = stringResource(R.string.auth_wisp),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.W500
+                ),
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.auth_tagline),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(12.dp))
-        } else {
-            Spacer(Modifier.height(12.dp))
-        }
-
-
-        OutlinedTextField(
-            value = nsecInput,
-            onValueChange = { viewModel.updateNsecInput(it) },
-            label = { Text(stringResource(R.string.auth_nsec_or_npub)) },
-            singleLine = true,
-            visualTransformation = if (nsecVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            trailingIcon = {
-                IconButton(onClick = { nsecVisible = !nsecVisible }) {
-                    Icon(
-                        imageVector = if (nsecVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        contentDescription = if (nsecVisible) stringResource(R.string.auth_hide_key) else stringResource(R.string.auth_show_key)
-                    )
+    
+            Spacer(Modifier.height(16.dp))
+    
+            if (showSignUp) {
+                Button(
+                    onClick = {
+                        if (viewModel.signUp()) onAuthenticated(true)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.auth_sign_up))
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = {
-                if (viewModel.logIn()) onAuthenticated(false)
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(R.string.auth_log_in))
-        }
-
-        if (signerAvailable) {
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            Spacer(Modifier.height(24.dp))
-
+    
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                Spacer(Modifier.height(24.dp))
+    
+                Text(
+                    text = stringResource(R.string.auth_or_log_in_with_key),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+            } else {
+                Spacer(Modifier.height(12.dp))
+            }
+    
+    
+            OutlinedTextField(
+                value = nsecInput,
+                onValueChange = { viewModel.updateNsecInput(it) },
+                label = { Text(stringResource(R.string.auth_nsec_or_npub)) },
+                singleLine = true,
+                visualTransformation = if (nsecVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    IconButton(onClick = { nsecVisible = !nsecVisible }) {
+                        Icon(
+                            imageVector = if (nsecVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = if (nsecVisible) stringResource(R.string.auth_hide_key) else stringResource(R.string.auth_show_key)
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+    
+            Spacer(Modifier.height(12.dp))
+    
             OutlinedButton(
                 onClick = {
-                    val permissions = """[{"type":"sign_event","kind":0},{"type":"sign_event","kind":1},{"type":"sign_event","kind":3},{"type":"sign_event","kind":5},{"type":"sign_event","kind":6},{"type":"sign_event","kind":7},{"type":"sign_event","kind":13},{"type":"sign_event","kind":9734},{"type":"sign_event","kind":10000},{"type":"sign_event","kind":10001},{"type":"sign_event","kind":10002},{"type":"sign_event","kind":10030},{"type":"sign_event","kind":10063},{"type":"sign_event","kind":22242},{"type":"sign_event","kind":24242},{"type":"sign_event","kind":30000},{"type":"sign_event","kind":30003},{"type":"sign_event","kind":30030},{"type":"nip44_encrypt"},{"type":"nip44_decrypt"}]"""
-                    val intent = RemoteSignerBridge.buildGetPublicKeyIntent(permissions)
-                    signerLauncher.launch(intent)
+                    if (viewModel.logIn()) onAuthenticated(false)
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.auth_login_with_signer))
+                Text(stringResource(R.string.auth_log_in))
+            }
+    
+            if (signerAvailable) {
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                Spacer(Modifier.height(24.dp))
+    
+                OutlinedButton(
+                    onClick = {
+                        val permissions = """[{"type":"sign_event","kind":0},{"type":"sign_event","kind":1},{"type":"sign_event","kind":3},{"type":"sign_event","kind":5},{"type":"sign_event","kind":6},{"type":"sign_event","kind":7},{"type":"sign_event","kind":13},{"type":"sign_event","kind":9734},{"type":"sign_event","kind":10000},{"type":"sign_event","kind":10001},{"type":"sign_event","kind":10002},{"type":"sign_event","kind":10030},{"type":"sign_event","kind":10063},{"type":"sign_event","kind":22242},{"type":"sign_event","kind":24242},{"type":"sign_event","kind":30000},{"type":"sign_event","kind":30003},{"type":"sign_event","kind":30030},{"type":"nip44_encrypt"},{"type":"nip44_decrypt"}]"""
+                        val intent = RemoteSignerBridge.buildGetPublicKeyIntent(permissions)
+                        signerLauncher.launch(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.auth_login_with_signer))
+                }
+            }
+    
+            error?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
-
-        error?.let {
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
+        TorCornerButton(
+            onToggle = onToggleTor,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(8.dp)
+        )
     }
 }
 

@@ -7,6 +7,7 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.db.EventPersistence
+import com.darkwisp.app.relay.HttpClientFactory
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayHealthTracker
@@ -14,6 +15,7 @@ import com.darkwisp.app.relay.RelayLifecycleManager
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.RelayScoreBoard
 import com.darkwisp.app.relay.SubscriptionManager
+import com.darkwisp.app.relay.TorManager
 import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.BookmarkRepository
 import com.darkwisp.app.repo.BookmarkSetRepository
@@ -42,6 +44,7 @@ import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.repo.InterestRepository
 import com.darkwisp.app.repo.LiveStreamRepository
 import com.darkwisp.app.repo.RelaySetRepository
+import com.darkwisp.app.repo.TorPreferences
 import com.darkwisp.app.repo.ZapPreferences
 import com.darkwisp.app.nostr.NostrSigner
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +54,8 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -204,6 +209,55 @@ class StartupCoordinator(
         if (relaysInitialized) { Log.d("StartupCoord", "initRelays: already initialized, returning"); return }
         relaysInitialized = true
 
+        if (TorPreferences.isEnabled()) {
+            // Process restarted with Tor on: relays must not attempt connections until
+            // the daemon is bootstrapped — the fail-closed proxy would refuse every
+            // attempt and burn through the per-relay backoff budget.
+            scope.launch {
+                TorManager.awaitOnIfEnabled()
+                initRelaysInternal()
+            }
+        } else {
+            initRelaysInternal()
+        }
+    }
+
+    /**
+     * Toggles Tor and re-routes every connection, both directions, serialized so
+     * rapid toggling can't interleave. Safe pre-login: the pool is empty, so the
+     * suspend/resume steps are no-ops and only the proxy state + daemon change.
+     */
+    fun setTorEnabled(enabled: Boolean) {
+        scope.launch {
+            torSwitchMutex.withLock {
+                if (enabled) {
+                    TorPreferences.setEnabled(true)
+                    // Fail-closed from this instant: future clients hit a dead SOCKS
+                    // port until bootstrap completes; existing clients are cancelled
+                    // and their keep-alive pools evicted.
+                    HttpClientFactory.setTorSocks(HttpClientFactory.TorSocks.Pending)
+                    relayPool.suspendForTorSwitch()
+                    val port = TorManager.start()
+                    if (port != null) {
+                        HttpClientFactory.setTorSocks(HttpClientFactory.TorSocks.Ready(port))
+                        relayPool.resumeAfterTorSwitch()
+                    }
+                    // port == null → stay fail-closed; TorManager.state shows Error
+                    // and the user can retry or toggle off.
+                } else {
+                    TorPreferences.setEnabled(false)
+                    HttpClientFactory.setTorSocks(HttpClientFactory.TorSocks.Off)
+                    relayPool.suspendForTorSwitch()
+                    relayPool.resumeAfterTorSwitch()
+                    TorManager.stop()
+                }
+            }
+        }
+    }
+
+    private val torSwitchMutex = Mutex()
+
+    private fun initRelaysInternal() {
         // Prune old events from ObjectBox in background
         eventPersistence?.let { persistence ->
             scope.launch(processingContext) { persistence.prune() }

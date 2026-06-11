@@ -37,6 +37,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        com.darkwisp.app.ui.component.NsecPasteGuard.setActivity(this)
         enableEdgeToEdge()
         deepLinkUri.value = intent?.data?.toString()
         setContent {

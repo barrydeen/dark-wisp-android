@@ -172,6 +172,133 @@ class StartupCoordinator(
         relaysInitialized = false
     }
 
+    fun resetForAnonSwitch() {
+        eventProcessingJob?.cancel()
+        metadataSweepJob?.cancel()
+        ephemeralCleanupJob?.cancel()
+        relayListRefreshJob?.cancel()
+        followWatcherJob?.cancel()
+        authCompletedJob?.cancel()
+        notifRefreshJob?.cancel()
+        startupJob?.cancel()
+        healthSnapshotJob?.cancel()
+        notifSeedJob?.cancel()
+        feedSub.reset()
+
+        lifecycleManager.stop()
+        relayPool.disconnectAll()
+        nwcRepo.disconnect()
+
+        metadataFetcher.clear()
+        eventRepo.clearAll()
+        customEmojiRepo.clear()
+        dmRepo.clear()
+        notifRepo.clear()
+        contactRepo.clear()
+        muteRepo.clear()
+        bookmarkRepo.clear()
+        bookmarkSetRepo.clear()
+        relaySetRepo.clear()
+        pinRepo.clear()
+        listRepo.clear()
+        blossomRepo.clear()
+        interestRepo.clear()
+        extendedNetworkRepo.clear()
+        relayScoreBoard.clear()
+        relayHintStore.clear()
+        healthTracker.clear()
+        relayListRepo.clear()
+        nip05Repo.clear()
+        relayPool.clearSeenEvents()
+        eventRouter.clearSelfDataTimestamps()
+
+        relaysInitialized = false
+    }
+
+    fun initForAnonMode() {
+        // Lightweight init that subscribes a global feed without self-data or DMs/notifications.
+        // Uses only default relays — no account-specific relay config.
+        if (relaysInitialized) return
+
+        // Set up relay pool with default relays only (no account-specific relay config)
+        relayPool.healthTracker = healthTracker
+        relayPool.appIsActive = true
+        relayPool.updateBlockedUrls(keyRepo.getBlockedRelays())
+        relayPool.setPinnedRelays(emptySet())
+        relayPool.updateRelays(RelayConfig.DEFAULTS)
+        relayPool.updateDmRelays(emptyList())
+
+        // Main event processing loop
+        eventProcessingJob = scope.launch(processingContext) {
+            relayPool.relayEvents.collect { (event, relayUrl, subscriptionId) ->
+                try {
+                    eventRouter.processRelayEvent(event, relayUrl, subscriptionId)
+                } catch (e: Exception) {
+                    Log.e("StartupCoord", "processRelayEvent crashed", e)
+                }
+            }
+        }
+
+        // Profile sweep
+        metadataSweepJob = scope.launch(processingContext) {
+            delay(3_000)
+            metadataFetcher.sweepMissingProfiles()
+            delay(5_000)
+            metadataFetcher.sweepMissingProfiles()
+            delay(7_000)
+            metadataFetcher.sweepMissingProfiles()
+            while (true) {
+                delay(120_000)
+                metadataFetcher.sweepMissingProfiles()
+            }
+        }
+
+        // Periodic ephemeral relay cleanup
+        ephemeralCleanupJob = scope.launch {
+            while (true) {
+                delay(60_000)
+                relayPool.cleanupEphemeralRelays()
+                eventRepo.trimSeenEvents()
+                relayHintStore.flush()
+            }
+        }
+
+        // Periodic health snapshot
+        healthSnapshotJob = scope.launch(processingContext) {
+            while (true) {
+                delay(60_000)
+                if (!DiagnosticLogger.isEnabled) continue
+                val pk = getUserPubkey()
+                DiagnosticLogger.log("HEALTH", "pubkey=${pk?.take(8)} " +
+                    "eventProcessingJob.active=${eventProcessingJob?.isActive} " +
+                    "connectedRelays=${relayPool.connectedCount.value}")
+            }
+        }
+
+        feedSub.subscribeFeed()
+
+        // Publish anon profile so the generated name appears on the network
+        val anonName = keyRepo.getAnonSessionName()
+        if (anonName != null) {
+            val s = getSigner()
+            if (s != null) {
+                scope.launch {
+                    delay(2_000) // let relay connections settle
+                    try {
+                        val jsonContent = """{"name":"$anonName","display_name":"$anonName"}"""
+                        val event = s.signEvent(kind = 0, content = jsonContent)
+                        val msg = ClientMessage.event(event)
+                        relayPool.sendToWriteRelays(msg)
+                    } catch (e: Exception) {
+                        Log.e("StartupCoord", "Failed to publish anon profile", e)
+                    }
+                }
+            }
+        }
+
+        relaysInitialized = true
+    }
+
     fun reloadForNewAccount() {
         val newPubkey = getUserPubkey()
 
@@ -206,6 +333,21 @@ class StartupCoordinator(
 
     fun initRelays() {
         Log.d("StartupCoord", "initRelays() called, relaysInitialized=$relaysInitialized")
+
+        // Anon mode: use lightweight init that skips self-data, DMs, and follows
+        if (keyRepo.getAnonSessionPubkey() != null) {
+            Log.d("StartupCoord", "initRelays: anon mode detected, using initForAnonMode")
+            if (TorPreferences.isEnabled()) {
+                scope.launch {
+                    TorManager.awaitOnIfEnabled()
+                    initForAnonMode()
+                }
+            } else {
+                initForAnonMode()
+            }
+            return
+        }
+
         if (relaysInitialized) { Log.d("StartupCoord", "initRelays: already initialized, returning"); return }
         relaysInitialized = true
 

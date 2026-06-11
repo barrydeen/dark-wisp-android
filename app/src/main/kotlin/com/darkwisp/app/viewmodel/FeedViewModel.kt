@@ -4,8 +4,11 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.darkwisp.app.nostr.Keys
+import com.darkwisp.app.nostr.LocalSigner
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
+import com.darkwisp.app.util.AnonNameGenerator
 import com.darkwisp.app.relay.HttpClientFactory
 import com.darkwisp.app.relay.Relay
 import com.darkwisp.app.relay.RelayLifecycleManager
@@ -62,7 +65,9 @@ import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.RelaySet
 import android.content.Context
 import com.darkwisp.app.nostr.Filter
+import com.darkwisp.app.nostr.toHex
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
@@ -132,6 +137,11 @@ sealed class InitLoadingState {
     data object Done : InitLoadingState()
 }
 
+data class AnonSession(
+    val keypair: Keys.Keypair,
+    val name: String
+)
+
 class FeedViewModel(app: Application) : AndroidViewModel(app) {
     // -- Infrastructure --
     val keyRepo = KeyRepository(app)
@@ -145,6 +155,11 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     var signer: NostrSigner? = null
         private set
 
+    private var savedSigner: NostrSigner? = null
+
+    private val _anonMode = MutableStateFlow<AnonSession?>(null)
+    val anonMode: StateFlow<AnonSession?> = _anonMode.asStateFlow()
+
     fun setSigner(s: NostrSigner) {
         signer = s
         zapSender.signer = s
@@ -153,6 +168,28 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearSigner() {
         signer = null
+    }
+
+    fun enterAnonMode() {
+        if (_anonMode.value != null) return
+        val anonKeypair = Keys.generate()
+        val anonName = AnonNameGenerator.generate()
+        if (savedSigner == null) {
+            savedSigner = signer
+        }
+        val anonSigner = LocalSigner(anonKeypair.privkey, anonKeypair.pubkey)
+        setSigner(anonSigner)
+        _anonMode.value = AnonSession(anonKeypair, anonName)
+        keyRepo.setAnonSessionActive(anonKeypair.pubkey.toHex(), anonName)
+    }
+
+    fun exitAnonMode() {
+        val session = _anonMode.value ?: return
+        session.keypair.wipe()
+        _anonMode.value = null
+        keyRepo.clearAnonSession()
+        savedSigner?.let { setSigner(it) }
+        savedSigner = null
     }
 
     private fun registerAuthSigner() {
@@ -435,6 +472,11 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     fun setTorEnabled(enabled: Boolean) = startup.setTorEnabled(enabled)
     fun resetForAccountSwitch() {
         startup.resetForAccountSwitch()
+        groupRepo.clear()
+        liveStreamRepo.clear()
+    }
+    fun resetForAnonSwitch() {
+        startup.resetForAnonSwitch()
         groupRepo.clear()
         liveStreamRepo.clear()
     }

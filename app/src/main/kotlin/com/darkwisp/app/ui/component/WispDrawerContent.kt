@@ -80,7 +80,7 @@ import com.darkwisp.app.repo.AccountInfo
 private val TorPurple = Color(0xFF9C59D1)
 private val TorAmber = Color(0xFFFFB74D)
 private val TorGreen = Color(0xFF4CAF50)
-
+private val AnonGreen = Color(0xFF00C853)
 
 @Composable
 fun WispDrawerContent(
@@ -91,6 +91,10 @@ fun WispDrawerContent(
     accounts: List<AccountInfo> = emptyList(),
     onSwitchAccount: (String) -> Unit = {},
     onAddAccount: () -> Unit = {},
+    anonModeActive: Boolean = false,
+    anonName: String? = null,
+    onEnterAnonMode: () -> Unit = {},
+    onExitAnonMode: () -> Unit = {},
     onProfile: () -> Unit,
     onFeed: () -> Unit,
     onSearch: () -> Unit,
@@ -357,8 +361,114 @@ fun WispDrawerContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    // Anon mode row
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    if (anonModeActive) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.Text("🕶️", fontSize = MaterialTheme.typography.titleMedium.fontSize)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Anon Mode",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = AnonGreen
+                                )
+                                if (anonName != null) {
+                                    Text(
+                                        text = anonName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = stringResource(R.string.cd_active),
+                                modifier = Modifier.size(18.dp),
+                                tint = AnonGreen
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    accountPickerExpanded = false
+                                    onEnterAnonMode()
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.Text("🕶️", fontSize = MaterialTheme.typography.titleMedium.fontSize)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Anon Mode",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            Icon(
+                                Icons.Outlined.KeyboardArrowRight,
+                                contentDescription = stringResource(R.string.cd_switch_account),
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
+        }
+
+        // Anon mode persistent banner
+        if (anonModeActive) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AnonGreen.copy(alpha = 0.15f))
+                    .clickable { onExitAnonMode() }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Text("🕶️", fontSize = MaterialTheme.typography.bodyLarge.fontSize)
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Anon Mode",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AnonGreen
+                    )
+                    if (anonName != null) {
+                        Text(
+                            text = "Posting as $anonName — tap to exit",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.ExitToApp,
+                    contentDescription = "Exit anon mode",
+                    modifier = Modifier.size(16.dp),
+                    tint = AnonGreen
+                )
+            }
+            HorizontalDivider()
         }
 
         if (showProfileQr && pubkey != null) {

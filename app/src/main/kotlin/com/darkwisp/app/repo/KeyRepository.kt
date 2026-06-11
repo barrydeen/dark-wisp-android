@@ -273,6 +273,29 @@ class KeyRepository(private val context: Context) {
 
     fun hasKeypair(): Boolean = encPrefs.getString("privkey", null) != null
 
+    // --- Anon session tracking (plain prefs — not encrypted, no keys stored) ---
+
+    private val anonPrefs: SharedPreferences =
+        context.getSharedPreferences("wisp_anon", Context.MODE_PRIVATE)
+
+    fun setAnonSessionActive(pubkeyHex: String?, name: String?) {
+        anonPrefs.edit()
+            .putString("anon_pubkey", pubkeyHex)
+            .putString("anon_name", name)
+            .apply()
+    }
+
+    fun getAnonSessionPubkey(): String? = anonPrefs.getString("anon_pubkey", null)
+
+    fun getAnonSessionName(): String? = anonPrefs.getString("anon_name", null)
+
+    fun clearAnonSession() {
+        anonPrefs.edit()
+            .remove("anon_pubkey")
+            .remove("anon_name")
+            .apply()
+    }
+
     fun getNpub(): String? {
         val pubHex = encPrefs.getString("pubkey", null) ?: return null
         return Nip19.npubEncode(pubHex.hexToByteArray())

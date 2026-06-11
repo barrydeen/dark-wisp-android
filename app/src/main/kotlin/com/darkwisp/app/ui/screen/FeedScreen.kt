@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
@@ -191,6 +192,8 @@ fun FeedScreen(
     fetchGroupPreview: (suspend (String, String) -> com.darkwisp.app.repo.GroupPreview?)? = null,
     scrollToTopTrigger: Int = 0,
     onScanResult: (String) -> Unit = {},
+    onEnterAnonMode: () -> Unit = {},
+    onExitAnonMode: () -> Unit = {},
 ) {
     val feed by viewModel.feed.collectAsState()
     val feedType by viewModel.feedType.collectAsState()
@@ -210,6 +213,7 @@ fun FeedScreen(
     val translationVersion by viewModel.translationRepo.version.collectAsState()
     val connectedCount by viewModel.relayPool.connectedCount.collectAsState()
     val liveNowStreams by viewModel.liveNowStreams.collectAsState()
+    val anonMode by viewModel.anonMode.collectAsState()
     val listState = rememberLazyListState()
 
     // Viewport-aware engagement: notify ViewModel of visible item range
@@ -653,6 +657,55 @@ fun FeedScreen(
         )
     }
 
+    var showAnonTorDialog by remember { mutableStateOf(false) }
+
+    if (showAnonTorDialog) {
+        val torState by TorManager.state.collectAsState()
+        AlertDialog(
+            onDismissRequest = { showAnonTorDialog = false },
+            title = { Text("Enable Tor?") },
+            text = {
+                Text("Anon Mode works best with Tor. Route your anonymous traffic through the Tor network?")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAnonTorDialog = false
+                    if (torState is TorManager.State.Off || torState is TorManager.State.Error) {
+                        viewModel.setTorEnabled(true)
+                    }
+                    scope.launch { drawerState.close() }
+                    onEnterAnonMode()
+                }) {
+                    Text("Enable Tor")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAnonTorDialog = false
+                    scope.launch { drawerState.close() }
+                    onEnterAnonMode()
+                }) {
+                    Text("No Thanks")
+                }
+            }
+        )
+    }
+
+    val handleEnterAnonMode: () -> Unit = {
+        val currentTorState = TorManager.state.value
+        if (currentTorState is TorManager.State.Off || currentTorState is TorManager.State.Error) {
+            showAnonTorDialog = true
+        } else {
+            scope.launch { drawerState.close() }
+            onEnterAnonMode()
+        }
+    }
+
+    val handleExitAnonMode: () -> Unit = {
+        scope.launch { drawerState.close() }
+        onExitAnonMode()
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -669,6 +722,10 @@ fun FeedScreen(
                 isDarkTheme = isDarkTheme,
                 onToggleTheme = onToggleTheme,
                 accounts = accounts,
+                anonModeActive = anonMode != null,
+                anonName = anonMode?.name,
+                onEnterAnonMode = handleEnterAnonMode,
+                onExitAnonMode = handleExitAnonMode,
                 onSwitchAccount = { pubkeyHex ->
                     scope.launch { drawerState.close() }
                     onSwitchAccount(pubkeyHex)
@@ -1174,6 +1231,40 @@ fun FeedScreen(
                             state = listState,
                             modifier = Modifier.fillMaxSize()
                         ) {
+                            if (anonMode != null) {
+                                item(key = "anon-banner", contentType = "anon-banner") {
+                                    val anonGreen = androidx.compose.ui.graphics.Color(0xFF00C853)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(anonGreen.copy(alpha = 0.12f))
+                                            .clickable { onExitAnonMode() }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("🕶️", fontSize = MaterialTheme.typography.bodyLarge.fontSize)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Anon Mode",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = anonGreen
+                                            )
+                                            val anonName = anonMode?.name ?: ""
+                                            Text(
+                                                text = "Posting as $anonName — tap to exit",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        TextButton(onClick = {
+                                            onExitAnonMode()
+                                        }) {
+                                            Text("Exit", color = anonGreen)
+                                        }
+                                    }
+                                }
+                            }
                             if (liveNowStreams.isNotEmpty() && onLiveStreamClick != null && !viewModel.interfacePrefs.isLiveStreamsHidden()) {
                                 item(key = "live-now", contentType = "live-now") {
                                     com.darkwisp.app.ui.component.LiveNowRow(

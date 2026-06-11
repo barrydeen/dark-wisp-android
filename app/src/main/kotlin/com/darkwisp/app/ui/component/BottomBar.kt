@@ -59,6 +59,7 @@ fun WispBottomBar(
     isZapAnimating: Boolean = false,
     isReplyAnimating: Boolean = false,
     notifSoundEnabled: Boolean = true,
+    hiddenTabs: Set<BottomTab> = emptySet(),
     onTabSelected: (BottomTab) -> Unit
 ) {
     Column {
@@ -71,6 +72,7 @@ fun WispBottomBar(
             windowInsets = NavigationBarDefaults.windowInsets
         ) {
         BottomTab.entries.forEach { tab ->
+            if (tab in hiddenTabs) return@forEach
             val selected = currentRoute == tab.route
             val hasUnread = when (tab) {
                 BottomTab.HOME -> hasUnreadHome

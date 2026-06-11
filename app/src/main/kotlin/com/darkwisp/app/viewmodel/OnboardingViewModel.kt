@@ -159,7 +159,8 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
         _error.value = null
 
         // Use real keypair if available, otherwise generate a throwaway for probing
-        val keypair = keyRepo.getKeypair() ?: Keys.generate()
+        val realKeypair = keyRepo.getKeypair()
+        val keypair = realKeypair ?: Keys.generate()
         val pubHex = keyRepo.getPubkeyHex() ?: keypair.pubkey.toHex()
         keyRepo.reloadPrefs(pubHex)
         blossomRepo.reload(pubHex)
@@ -167,14 +168,15 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
         // Reload wallet repos so mnemonic + mode are stored under the correct pubkey prefs
         walletModeRepo?.reload(pubHex)
 
-        // Pre-generate mnemonic (CPU only, no network contention with relay probing)
-        if (sparkRepo != null) {
+        // Derive the default Spark wallet deterministically from the user's nsec
+        // so it is recoverable on any device by signing in with the same key.
+        // Skip if no real keypair yet (we're only probing relays with a throwaway).
+        if (sparkRepo != null && realKeypair != null) {
             sparkRepo.reload(pubHex)
             try {
-                val mnemonic = sparkRepo.newMnemonic()
-                sparkRepo.saveMnemonic(mnemonic)
+                sparkRepo.generateDefaultFromPrivkey(realKeypair.privkey)
             } catch (e: Exception) {
-                Log.w(TAG, "Mnemonic generation failed: ${e.message}")
+                Log.w(TAG, "Default wallet derivation failed: ${e.message}")
             }
         }
 
@@ -273,8 +275,12 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // Backup mnemonic to relays via NIP-78
-            if (sparkRepo != null && lightningAddress != null) {
+            // NIP-78 relay backup is only useful for non-default wallets — the
+            // default wallet's mnemonic is derived from the nsec, and Breez
+            // remembers its lightning address registration server-side, so
+            // there's nothing extra to persist on relays.
+            val privkey = keyRepo.getKeypair()?.privkey
+            if (sparkRepo != null && privkey != null && !sparkRepo.isDefaultWallet(privkey)) {
                 val mnemonic = sparkRepo.getMnemonic()
                 if (mnemonic != null) {
                     viewModelScope.launch {

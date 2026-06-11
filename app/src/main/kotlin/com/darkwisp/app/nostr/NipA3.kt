@@ -26,7 +26,11 @@ object NipA3 {
         "monero" to TargetStyle("Monero", "ɱ", "XMR"),
         "nano" to TargetStyle("Nano", "Ӿ", "XNO"),
         "revolut" to TargetStyle("Revolut", null, null),
-        "venmo" to TargetStyle("Venmo", "$", null)
+        "venmo" to TargetStyle("Venmo", "$", null),
+        "bitcoincash" to TargetStyle("Bitcoin Cash", "₿", "BCH"),
+        "dash" to TargetStyle("Dash", "Đ", "DASH"),
+        "litecoin" to TargetStyle("Litecoin", "Ł", "LTC"),
+        "zcash" to TargetStyle("Zcash", "Z", "ZEC")
     )
 
     private val TYPE_REGEX = Regex("^[a-z0-9-]+$")
@@ -34,10 +38,14 @@ object NipA3 {
     /** Types with a widely supported native Android URI scheme; preferred over payto://. */
     private val NATIVE_SCHEMES = mapOf(
         "bitcoin" to "bitcoin:",
+        "bitcoincash" to "bitcoincash:",
+        "dash" to "dash:",
         "ethereum" to "ethereum:",
+        "lightning" to "lightning:",
+        "litecoin" to "litecoin:",
         "monero" to "monero:",
         "nano" to "nano:",
-        "lightning" to "lightning:"
+        "zcash" to "zcash:"
     )
 
     /** Lowercased, trimmed type, or null if it isn't a valid payto type. */

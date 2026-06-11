@@ -188,6 +188,8 @@ fun ByteArray.toHex(): String {
     return String(result)
 }
 
+fun String.toNpub(): String = Nip19.npubEncode(hexToByteArray())
+
 fun String.hexToByteArray(): ByteArray {
     require(length % 2 == 0) { "Hex string must have even length" }
     return ByteArray(length / 2) { i ->

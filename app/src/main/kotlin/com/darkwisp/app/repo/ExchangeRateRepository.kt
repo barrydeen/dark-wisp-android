@@ -129,6 +129,17 @@ object ExchangeRateRepository {
         return sats.toDouble() / 100_000_000.0 * btcPrice
     }
 
+    /**
+     * Inverse of [satsToFiat] — convert a fiat amount expressed in the
+     * currency's major unit (dollars, euros, etc.) into sats. Returns null
+     * when no rate is cached. Used by the zap sheet's custom-amount input
+     * in fiat mode where the user types `1.50` for a $1.50 zap.
+     */
+    fun fiatToSats(majorAmount: Double, currency: String): Long? {
+        val btcPrice = _rates.value[currency.uppercase()] ?: return null
+        return (majorAmount / btcPrice * 100_000_000.0).toLong()
+    }
+
     fun currencyFor(code: String): FiatCurrency =
         SUPPORTED.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: SUPPORTED[0]
 

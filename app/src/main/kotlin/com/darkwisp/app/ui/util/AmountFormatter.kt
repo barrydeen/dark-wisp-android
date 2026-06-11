@@ -59,11 +59,16 @@ object AmountFormatter {
 
     private fun renderCurrency(amount: Double, currency: FiatCurrency): String {
         val abs = kotlin.math.abs(amount)
+        // Sub-dollar tiers use `#` (optional) past the decimal so trailing
+        // zeros drop — "$0.84" instead of "$0.840", "$0.8" instead of
+        // "$0.800". The cap grows as the value shrinks so we don't lose
+        // precision on tiny amounts. Whole-dollar amounts keep two decimal
+        // places (the expected retail convention: "$1.00", not "$1").
         val pattern = when {
             abs == 0.0 -> "#,##0.00"
-            abs < 0.001 -> "#,##0.000000"
-            abs < 0.01 -> "#,##0.0000"
-            abs < 1.0 -> "#,##0.000"
+            abs < 0.001 -> "#,##0.######"
+            abs < 0.01 -> "#,##0.####"
+            abs < 1.0 -> "#,##0.###"
             abs >= 1000.0 -> "#,##0"
             else -> "#,##0.00"
         }

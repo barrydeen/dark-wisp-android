@@ -76,13 +76,19 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.NipA3
+import com.darkwisp.app.repo.ExchangeRateRepository
+import com.darkwisp.app.repo.FiatCurrency
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.ZapPreferences
 import com.darkwisp.app.repo.ZapPreset
@@ -178,7 +184,7 @@ fun ZapDialog(
     val context = LocalContext.current
     val fiatPrefs = remember { FiatPreferences.get(context) }
     val fiatMode by fiatPrefs.fiatMode.collectAsState()
-    @Suppress("unused_variable") val fiatCurrency by fiatPrefs.currency.collectAsState()
+    val fiatCurrency by fiatPrefs.currency.collectAsState()
     var presets by remember { mutableStateOf(ZapPreferences(context).getPresets().sortedBy { it.amountSats }) }
     var selectedPreset by remember { mutableStateOf<ZapPreset?>(presets.firstOrNull()) }
     var isCustom by remember { mutableStateOf(false) }
@@ -205,7 +211,17 @@ fun ZapDialog(
     }
 
     val effectiveAmount = if (isCustom) {
-        customAmount.toLongOrNull() ?: 0L
+        if (fiatMode) {
+            // Register-style: customAmount is a digit-only string that's
+            // interpreted as cents (last two digits). "21" → $0.21,
+            // "2100" → $21.00.
+            val cents = customAmount.toLongOrNull() ?: 0L
+            if (cents > 0) {
+                ExchangeRateRepository.fiatToSats(cents.toDouble() / 100.0, fiatCurrency) ?: 0L
+            } else 0L
+        } else {
+            customAmount.toLongOrNull() ?: 0L
+        }
     } else {
         selectedPreset?.amountSats ?: 0L
     }
@@ -236,8 +252,10 @@ fun ZapDialog(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Header with animated bolt
-                    AnimatedBoltHeader()
+                    // Header with animated bolt — switches to a coin-stack
+                    // glyph in fiat mode so the icon reads as money rather
+                    // than zap. Mirrors the iOS dynamic `zapImage`.
+                    AnimatedBoltHeader(fiatMode = fiatMode)
 
                     Spacer(Modifier.height(8.dp))
 
@@ -252,11 +270,33 @@ fun ZapDialog(
 
                     Spacer(Modifier.height(4.dp))
 
-                    // Amount display — tap to edit directly
+                    // Amount display — tap to edit directly. In fiat mode the
+                    // input is interpreted register-style: digits fill from the
+                    // cents place ("21" → $0.21, "2100" → $21.00). The field
+                    // is bound to the raw digit string and a
+                    // `VisualTransformation` renders it as the formatted
+                    // dollar string with the cursor pinned to the end — that
+                    // way backspace removes the rightmost digit and Compose
+                    // can map cursor positions cleanly (binding the field
+                    // directly to the formatted string and rewriting it on
+                    // every keystroke broke backspace because Compose
+                    // couldn't map the cursor between the old and new
+                    // formatted strings).
+                    val currency = if (fiatMode) {
+                        ExchangeRateRepository.currencyFor(fiatCurrency)
+                    } else null
+                    val centsTransformation = remember(currency) {
+                        currency?.let { CentsVisualTransformation(it) }
+                    }
                     if (isCustom) {
                         BasicTextField(
                             value = customAmount,
-                            onValueChange = { customAmount = it.filter { c -> c.isDigit() } },
+                            onValueChange = { new ->
+                                customAmount = if (fiatMode) sanitizeFiatInput(new) else new.filter { c -> c.isDigit() }
+                            },
+                            visualTransformation = if (fiatMode && centsTransformation != null) {
+                                centsTransformation
+                            } else VisualTransformation.None,
                             textStyle = MaterialTheme.typography.displaySmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = LightningOrange,
@@ -272,7 +312,7 @@ fun ZapDialog(
                                 Box(contentAlignment = Alignment.Center) {
                                     if (customAmount.isEmpty()) {
                                         Text(
-                                            text = "0",
+                                            text = if (fiatMode) "${currency?.symbol ?: ""}0.00" else "0",
                                             style = MaterialTheme.typography.displaySmall,
                                             fontWeight = FontWeight.Bold,
                                             color = LightningOrange.copy(alpha = 0.3f)
@@ -297,7 +337,15 @@ fun ZapDialog(
                             color = LightningOrange,
                             modifier = Modifier
                                 .clickable {
-                                    customAmount = effectiveAmount.toString()
+                                    // Seed the field with the equivalent cents
+                                    // digit string so the user can refine the
+                                    // selected preset rather than starting from
+                                    // empty in fiat mode.
+                                    customAmount = if (fiatMode) {
+                                        seedRegisterCents(effectiveAmount, fiatCurrency)
+                                    } else {
+                                        effectiveAmount.toString()
+                                    }
                                     isCustom = true
                                 }
                                 .padding(vertical = 4.dp)
@@ -392,8 +440,21 @@ fun ZapDialog(
                         Column {
                             OutlinedTextField(
                                 value = customAmount,
-                                onValueChange = { customAmount = it.filter { c -> c.isDigit() } },
-                                label = { Text(stringResource(R.string.placeholder_amount_sats)) },
+                                onValueChange = { new ->
+                                    customAmount = if (fiatMode) sanitizeFiatInput(new) else new.filter { c -> c.isDigit() }
+                                },
+                                visualTransformation = if (fiatMode && centsTransformation != null) {
+                                    centsTransformation
+                                } else VisualTransformation.None,
+                                label = {
+                                    Text(
+                                        if (fiatMode) {
+                                            stringResource(R.string.placeholder_amount_currency, currency?.symbol ?: "")
+                                        } else {
+                                            stringResource(R.string.placeholder_amount_sats)
+                                        }
+                                    )
+                                },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
@@ -404,7 +465,10 @@ fun ZapDialog(
                                     cursorColor = LightningOrange
                                 )
                             )
-                            val saveAmount = customAmount.toLongOrNull() ?: 0L
+                            // Save-as-preset only makes sense for whole-sat
+                            // amounts; in fiat mode we always derive sats
+                            // through the exchange rate, which can drift.
+                            val saveAmount = if (fiatMode) 0L else (customAmount.toLongOrNull() ?: 0L)
                             if (saveAmount > 0) {
                                 Spacer(Modifier.height(6.dp))
                                 TextButton(
@@ -585,7 +649,9 @@ fun ZapDialog(
                             shape = RoundedCornerShape(16.dp)
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_bolt),
+                                painter = painterResource(
+                                    if (fiatMode) R.drawable.ic_coin_stack else R.drawable.ic_bolt
+                                ),
                                 contentDescription = null,
                                 modifier = Modifier.size(15.dp)
                             )
@@ -690,8 +756,71 @@ private fun PaymentTargetChip(target: NipA3.PaymentTarget, onClick: () -> Unit) 
     )
 }
 
+/**
+ * Register-style sanitiser: digits only. The fiat-mode amount field is
+ * interpreted as integer cents (last two digits = cents place), so
+ * decimal points and other punctuation in user input are stripped — the
+ * decimal in the displayed string ("$0.21") is presentation-only.
+ */
+private fun sanitizeFiatInput(text: String): String =
+    text.filter { it.isDigit() }
+
+/**
+ * Format a digit-only string as `$X.XX` register-style — last two digits
+ * are cents, everything before them is whole dollars. "21" → "$0.21",
+ * "2100" → "$21.00". Used for the empty-field placeholder; the live
+ * field display goes through [CentsVisualTransformation] so Compose's
+ * cursor mapping works correctly.
+ */
+private fun formatRegisterCents(digits: String, currency: FiatCurrency): String {
+    val cents = digits.toLongOrNull() ?: 0L
+    val dollars = cents.toDouble() / 100.0
+    val formatter = java.text.DecimalFormat("#,##0.00")
+    return "${currency.symbol}${formatter.format(dollars)}"
+}
+
+/**
+ * Renders a digit-only field value as the formatted register-style
+ * dollar string and pegs the cursor to the end. The previous approach
+ * — binding the TextField directly to the formatted string and
+ * re-formatting in `onValueChange` — broke backspace on Android: when
+ * Compose's internal text changed from "$0.2" (after the user removed
+ * the last char) to our re-formatted "$0.02", Compose couldn't map the
+ * old cursor position into the new string and effectively snapped it
+ * to the start, so subsequent backspaces just moved the cursor instead
+ * of deleting. With a [VisualTransformation] the field is bound to the
+ * raw digits, the cursor lives in raw-string coordinates, and the
+ * `OffsetMapping` always points to the end of the formatted view.
+ */
+private class CentsVisualTransformation(
+    private val currency: FiatCurrency
+) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val formatted = formatRegisterCents(text.text, currency)
+        val rawLength = text.text.length
+        val transformedLength = formatted.length
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = transformedLength
+            override fun transformedToOriginal(offset: Int): Int = rawLength
+        }
+        return TransformedText(AnnotatedString(formatted), mapping)
+    }
+}
+
+/**
+ * Cents-as-digits seed for the custom-amount field. Converts the current
+ * sats amount through the cached rate, rounds to the nearest cent, and
+ * returns the digit string (e.g. 1234 cents → "1234"). Empty for zero
+ * or when no rate is cached.
+ */
+private fun seedRegisterCents(amountSats: Long, currencyCode: String): String {
+    val dollars = ExchangeRateRepository.satsToFiat(amountSats, currencyCode) ?: return ""
+    val cents = (dollars * 100.0).toLong()
+    return if (cents > 0) cents.toString() else ""
+}
+
 @Composable
-private fun AnimatedBoltHeader() {
+private fun AnimatedBoltHeader(fiatMode: Boolean = false) {
     val infiniteTransition = rememberInfiniteTransition(label = "bolt")
 
     val glowAlpha by infiniteTransition.animateFloat(
@@ -736,9 +865,11 @@ private fun AnimatedBoltHeader() {
                 )
         )
 
-        // Bolt icon
+        // Bolt / coin-stack icon depending on mode
         Icon(
-            painter = painterResource(R.drawable.ic_bolt),
+            painter = painterResource(
+                if (fiatMode) R.drawable.ic_coin_stack else R.drawable.ic_bolt
+            ),
             contentDescription = null,
             tint = zapColor,
             modifier = Modifier

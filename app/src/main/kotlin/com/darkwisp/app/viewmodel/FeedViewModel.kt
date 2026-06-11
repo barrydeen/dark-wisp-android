@@ -176,6 +176,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     val profileRepo = ProfileRepository(app)
     val muteRepo = MuteRepository(app, pubkeyHex)
     val nip05Repo = Nip05Repository()
+    val namecoinRepo = com.darkwisp.app.repo.NamecoinRepository()
     val relayHintStore = RelayHintStore(app)
     val deletedEventsRepo = DeletedEventsRepository(app, pubkeyHex)
     val eventPersistence: EventPersistence? = if (WispObjectBox.isInitialized) {

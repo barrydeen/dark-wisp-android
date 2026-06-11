@@ -62,6 +62,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.darkwisp.app.nostr.NamecoinResolveOutcome
 import com.darkwisp.app.nostr.Nip02
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.NostrEvent
@@ -71,6 +72,8 @@ import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.ContactRepository
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.MuteRepository
+import com.darkwisp.app.repo.NamecoinRepository
+import com.darkwisp.app.repo.NamecoinResolutionState
 import com.darkwisp.app.repo.TranslationRepository
 import com.darkwisp.app.repo.TranslationState
 import com.darkwisp.app.ui.component.FollowButton
@@ -113,7 +116,9 @@ fun SearchScreen(
     onAddEmojiSet: ((String, String) -> Unit)? = null,
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
-    nip05Repo: com.darkwisp.app.repo.Nip05Repository? = null
+    nip05Repo: com.darkwisp.app.repo.Nip05Repository? = null,
+    namecoinRepo: NamecoinRepository? = null,
+    onNamecoinResolved: ((String) -> Unit)? = null
 ) {
     val query by viewModel.query.collectAsState()
     val filter by viewModel.filter.collectAsState()
@@ -156,6 +161,16 @@ fun SearchScreen(
         try { focusRequester.requestFocus() } catch (_: IllegalStateException) {}
         // Seed search refs so debounced auto-search works before first manual search
         viewModel.initSearchRefs(relayPool, eventRepo, muteRepo)
+    }
+
+    // Drive the Namecoin resolver from the live query. Cheap pre-filter
+    // inside the repo keeps non-.bit input as a no-op; .bit / d/ / id/
+    // queries kick off an async on-chain lookup whose state we render
+    // in an inline row above the relay results.
+    LaunchedEffect(query, namecoinRepo) {
+        if (namecoinRepo == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(300)
+        namecoinRepo.resolve(query)
     }
 
     Scaffold(
@@ -287,6 +302,14 @@ fun SearchScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
+            }
+
+            if (namecoinRepo != null) {
+                NamecoinResolutionRow(
+                    namecoinRepo = namecoinRepo,
+                    onNavigateToProfile = onProfileClick,
+                    onResolvedExternal = onNamecoinResolved,
+                )
             }
 
             // Results
@@ -814,4 +837,111 @@ private fun UserResultItem(
             onClick = onToggleFollow
         )
     }
+}
+
+/**
+ * Inline status row for Namecoin (.bit / d/ / id/) lookups in the global
+ * search. Mirrors Amethyst's NamecoinResolutionRow — only renders when the
+ * current query looks like a Namecoin identifier, so it stays out of the
+ * way for normal Nostr searches.
+ *
+ * Shows a spinner while ElectrumX is queried, then surfaces:
+ *   • Success → tappable row with the resolved Namecoin name + npub hint
+ *   • NameNotFound → plain "not registered" line
+ *   • NoNostrField / MalformedRecord → "no Nostr identity in record"
+ *   • ServersUnreachable / Timeout → "couldn't reach Namecoin servers"
+ *
+ * Tapping a successful resolution navigates to the resolved pubkey's
+ * profile (same target as a normal user search hit), so the user can
+ * follow / DM / zap from there without any further wiring.
+ */
+@Composable
+private fun NamecoinResolutionRow(
+    namecoinRepo: com.darkwisp.app.repo.NamecoinRepository,
+    onNavigateToProfile: (String) -> Unit,
+    onResolvedExternal: ((String) -> Unit)? = null,
+) {
+    val state by namecoinRepo.state.collectAsState()
+    if (state is NamecoinResolutionState.Idle) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        when (val s = state) {
+            is NamecoinResolutionState.Idle -> Unit
+            is NamecoinResolutionState.Resolving -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Resolving ${s.identifier} on Namecoin…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            is NamecoinResolutionState.Resolved -> when (val outcome = s.outcome) {
+                is NamecoinResolveOutcome.Success -> {
+                    val pubkey = outcome.result.pubkey
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                (onResolvedExternal ?: onNavigateToProfile)(pubkey)
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "${s.identifier}  ✓ Namecoin",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = pubkey.take(16) + "…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                is NamecoinResolveOutcome.NameNotFound -> NamecoinStatus(
+                    "${outcome.name} isn’t registered on Namecoin",
+                )
+                is NamecoinResolveOutcome.NoNostrField -> NamecoinStatus(
+                    "${outcome.name} has no Nostr identity",
+                )
+                is NamecoinResolveOutcome.MalformedRecord -> NamecoinStatus(
+                    "${outcome.name} has a malformed Namecoin record",
+                )
+                is NamecoinResolveOutcome.ServersUnreachable -> NamecoinStatus(
+                    "Couldn’t reach Namecoin ElectrumX servers",
+                )
+                is NamecoinResolveOutcome.NotANamecoinIdentifier -> Unit
+                is NamecoinResolveOutcome.Timeout -> NamecoinStatus(
+                    "Namecoin lookup timed out",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NamecoinStatus(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

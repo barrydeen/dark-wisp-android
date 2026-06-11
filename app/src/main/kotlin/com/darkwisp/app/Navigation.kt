@@ -1300,7 +1300,11 @@ fun WispNavHost(
                     val ref = com.darkwisp.app.nostr.Nip30.buildSetReference(pubkey, dTag)
                     feedViewModel.customEmojiRepo.userEmojiList.value?.setReferences?.contains(ref) ?: false
                 },
-                nip05Repo = feedViewModel.nip05Repo
+                nip05Repo = feedViewModel.nip05Repo,
+                namecoinRepo = feedViewModel.namecoinRepo,
+                onNamecoinResolved = { pubkey ->
+                    navController.navigate("profile/$pubkey")
+                }
             )
         }
 

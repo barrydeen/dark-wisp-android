@@ -548,11 +548,13 @@ fun FeedScreen(
             },
             onGoToWallet = onWallet,
             canPrivateZap = userHasDmRelays && recipientHasDmRelays,
-            recipientPubkey = zapRecipient,
+            recipientPubkey = zapTargetEvent?.pubkey,
             // Unknown profile -> assume zappable; the send path surfaces the error.
-            recipientHasLud16 = viewModel.eventRepo.getProfileData(zapRecipient)
-                ?.let { !it.lud16.isNullOrBlank() } ?: true,
-            fetchPaymentTargets = viewModel::fetchPaymentTargets
+            recipientHasLud16 = zapTargetEvent?.pubkey?.let { pk ->
+                viewModel.eventRepo.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() }
+            } ?: true,
+            fetchPaymentTargets = viewModel::fetchPaymentTargets,
+            profileLookup = { viewModel.profileRepo.get(it) }
         )
     }
 
@@ -580,7 +582,9 @@ fun FeedScreen(
                 zapPollTarget = null
                 viewModel.sendZapPollVote(pollEvent, optionIndex, amountMsats, message, isAnonymous)
             },
-            onGoToWallet = onWallet
+            onGoToWallet = onWallet,
+            recipientPubkey = pollEvent.pubkey,
+            profileLookup = { viewModel.profileRepo.get(it) }
         )
     }
 

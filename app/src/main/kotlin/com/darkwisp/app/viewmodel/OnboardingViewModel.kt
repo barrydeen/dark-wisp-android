@@ -168,18 +168,6 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
         // Reload wallet repos so mnemonic + mode are stored under the correct pubkey prefs
         walletModeRepo?.reload(pubHex)
 
-        // Derive the default Spark wallet deterministically from the user's nsec
-        // so it is recoverable on any device by signing in with the same key.
-        // Skip if no real keypair yet (we're only probing relays with a throwaway).
-        if (sparkRepo != null && realKeypair != null) {
-            sparkRepo.reload(pubHex)
-            try {
-                sparkRepo.generateDefaultFromPrivkey(realKeypair.privkey)
-            } catch (e: Exception) {
-                Log.w(TAG, "Default wallet derivation failed: ${e.message}")
-            }
-        }
-
         viewModelScope.launch {
             val relays = RelayProber.discoverAndSelect(
                 keypair = keypair,
@@ -275,12 +263,8 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // NIP-78 relay backup is only useful for non-default wallets — the
-            // default wallet's mnemonic is derived from the nsec, and Breez
-            // remembers its lightning address registration server-side, so
-            // there's nothing extra to persist on relays.
             val privkey = keyRepo.getKeypair()?.privkey
-            if (sparkRepo != null && privkey != null && !sparkRepo.isDefaultWallet(privkey)) {
+            if (sparkRepo != null && privkey != null) {
                 val mnemonic = sparkRepo.getMnemonic()
                 if (mnemonic != null) {
                     viewModelScope.launch {

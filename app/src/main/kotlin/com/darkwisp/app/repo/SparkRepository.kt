@@ -126,24 +126,6 @@ class SparkRepository(
         return entropyToMnemonic(entropy, wordlist)
     }
 
-    /**
-     * Generate a BIP39 mnemonic deterministically from a Nostr private key.
-     * The same privkey always produces the same mnemonic, so a user's default
-     * Spark wallet is recoverable on any device by signing in with their nsec.
-     *
-     * Does NOT auto-acknowledge the seed backup — iOS's equivalent leaves the
-     * ack flag false so the "default wallet is secured by your key" welcome
-     * banner can render, and Android should match. The user can dismiss the
-     * banner by tapping it / acknowledging in the seed-view page.
-     */
-    fun generateDefaultFromPrivkey(privkey: ByteArray): String {
-        val wordlist = requireWordlist()
-        val entropy = Keys.deriveSparkEntropy(privkey)
-        val mnemonic = entropyToMnemonic(entropy, wordlist)
-        saveMnemonic(mnemonic)
-        return mnemonic
-    }
-
     private fun requireWordlist(): List<String> {
         val wordlist = BIP39_WORDS
         if (wordlist.size < 2048) {
@@ -234,30 +216,6 @@ class SparkRepository(
         _balance.value = null
         _isConnected.value = false
     }
-
-    /**
-     * True when the currently-saved mnemonic matches the deterministic
-     * derivation `entropyToMnemonic(Keys.deriveSparkEntropy(privkey))` for
-     * this account — i.e. the wallet is recoverable on any device by
-     * signing in with the same key.
-     *
-     * Compares the stored mnemonic against the deterministic derivation
-     * rather than relying on a sticky `spark_is_default` flag — a wallet
-     * restored from a non-default NIP-78 backup correctly reports `false`
-     * here even on a device where the user had previously generated the
-     * default wallet (a stale flag was surfacing the "default wallet"
-     * banner over a non-default restored wallet on iOS; mirror fix here).
-     */
-    fun isDefaultWallet(privkey: ByteArray): Boolean {
-        val current = encPrefs.getString("spark_mnemonic", null) ?: return false
-        val wordlist = BIP39_WORDS
-        if (wordlist.size < 2048) return false
-        val derived = entropyToMnemonic(Keys.deriveSparkEntropy(privkey), wordlist)
-        return normalizeMnemonic(current) == normalizeMnemonic(derived)
-    }
-
-    private fun normalizeMnemonic(mnemonic: String): String =
-        mnemonic.trim().lowercase().replace(Regex("\\s+"), " ")
 
     fun isSeedBackupAcknowledged(): Boolean =
         encPrefs.getBoolean("seed_backup_acked", false)

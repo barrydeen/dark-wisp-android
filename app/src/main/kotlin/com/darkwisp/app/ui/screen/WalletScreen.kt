@@ -335,9 +335,7 @@ fun WalletScreen(
                             is WalletPage.SparkSetup -> SparkSetupContent(
                                 walletState = walletState,
                                 statusLines = viewModel.statusLines.collectAsState().value,
-                                canUseDefaultWallet = viewModel.keyRepo.hasKeypair(),
                                 onClose = { viewModel.navigateHome() },
-                                onUseDefaultWallet = { viewModel.useDefaultWallet() },
                                 onCreateWallet = { viewModel.generateSparkWallet() },
                                 onRestoreFromSeed = { viewModel.navigateTo(WalletPage.SparkRestoreSeed) },
                                 onRestoreFromRelay = {
@@ -358,8 +356,7 @@ fun WalletScreen(
                                 val page = currentPage as WalletPage.SparkBackup
                                 SparkBackupContent(
                                     mnemonic = page.mnemonic,
-                                    onConfirm = { viewModel.confirmSparkBackup() },
-                                    isDefaultWallet = viewModel.isDefaultWallet.collectAsState().value
+                                    onConfirm = { viewModel.confirmSparkBackup() }
                                 )
                             }
                             else -> {} // handled above (mode picker branch)
@@ -381,8 +378,7 @@ fun WalletScreen(
                         ) {
                             SparkBackupContent(
                                 mnemonic = page.mnemonic,
-                                onConfirm = { viewModel.acknowledgeSeedBackup() },
-                                isDefaultWallet = viewModel.isDefaultWallet.collectAsState().value
+                                onConfirm = { viewModel.acknowledgeSeedBackup() }
                             )
                         }
                     }
@@ -397,11 +393,9 @@ fun WalletScreen(
                             walletMode = viewModel.walletMode.collectAsState().value,
                             balanceUnit = viewModel.balanceUnit.collectAsState().value,
                             showSettingsAlert = viewModel.walletMode.collectAsState().value == WalletMode.SPARK
-                                    && !viewModel.seedBackupAcked.collectAsState().value
-                                    && !viewModel.isDefaultWallet.collectAsState().value,
+                                    && !viewModel.seedBackupAcked.collectAsState().value,
                             seedBackupAcked = viewModel.seedBackupAcked.collectAsState().value,
                             backupMissing = viewModel.backupMissing.collectAsState().value,
-                            isDefaultWallet = viewModel.isDefaultWallet.collectAsState().value,
                             onSend = { viewModel.navigateTo(WalletPage.SendInput) },
                             onReceive = {
                                 viewModel.navigateTo(WalletPage.ReceiveAmount)
@@ -567,7 +561,6 @@ fun WalletScreen(
                         relayBackupCheckLoading = viewModel.relayBackupCheckLoading.collectAsState().value,
                         deleteBackupStatus = viewModel.deleteBackupStatus.collectAsState().value,
                         isLoggedIn = viewModel.keyRepo.isLoggedIn(),
-                        isDefaultWallet = viewModel.isDefaultWallet.collectAsState().value,
                         onCheckRelayBackups = { viewModel.checkRelayBackupStatuses() },
                         onDeleteRelayBackup = { viewModel.deleteRelayBackup() },
                         sparkIdentityPubkey = viewModel.sparkIdentityPubkey.collectAsState().value,
@@ -598,7 +591,6 @@ fun WalletScreen(
                         onDelete = { viewModel.deleteWallet() },
                         onCancel = { viewModel.navigateBack() },
                         walletMode = viewModel.walletMode.collectAsState().value,
-                        isDefaultWallet = viewModel.isDefaultWallet.collectAsState().value,
                         modifier = Modifier.padding(padding)
                     )
                     is WalletPage.BackupToRelay -> BackupToRelayContent(
@@ -629,11 +621,9 @@ fun WalletScreen(
                             walletMode = viewModel.walletMode.collectAsState().value,
                             balanceUnit = viewModel.balanceUnit.collectAsState().value,
                             showSettingsAlert = viewModel.walletMode.collectAsState().value == WalletMode.SPARK
-                                    && !viewModel.seedBackupAcked.collectAsState().value
-                                    && !viewModel.isDefaultWallet.collectAsState().value,
+                                    && !viewModel.seedBackupAcked.collectAsState().value,
                             seedBackupAcked = viewModel.seedBackupAcked.collectAsState().value,
                             backupMissing = viewModel.backupMissing.collectAsState().value,
-                            isDefaultWallet = viewModel.isDefaultWallet.collectAsState().value,
                             onSend = { viewModel.navigateTo(WalletPage.SendInput) },
                             onReceive = { viewModel.navigateTo(WalletPage.ReceiveAmount) },
                             onTransactions = {
@@ -1098,7 +1088,6 @@ private fun WalletHomeContent(
     showSettingsAlert: Boolean = false,
     seedBackupAcked: Boolean = true,
     backupMissing: Boolean = false,
-    isDefaultWallet: Boolean = false,
     onSend: () -> Unit,
     onReceive: () -> Unit,
     onTransactions: () -> Unit,
@@ -1224,50 +1213,7 @@ private fun WalletHomeContent(
         }
 
         // ── Banner row ──────────────────────────────────────────────
-        if (walletMode == WalletMode.SPARK && isDefaultWallet && !seedBackupAcked) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onViewSeed),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Icon(
-                        Icons.Outlined.VpnKey,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.wallet_welcome_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            stringResource(R.string.wallet_welcome_body),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        } else if (walletMode == WalletMode.SPARK && backupMissing && !isDefaultWallet) {
+        if (walletMode == WalletMode.SPARK && backupMissing) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -1300,7 +1246,7 @@ private fun WalletHomeContent(
                 }
             }
             Spacer(Modifier.height(8.dp))
-        } else if (walletMode == WalletMode.SPARK && !seedBackupAcked && !backupMissing && !isDefaultWallet) {
+        } else if (walletMode == WalletMode.SPARK && !seedBackupAcked && !backupMissing) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -3268,9 +3214,7 @@ private fun SparkOptionRow(
 private fun SparkSetupContent(
     walletState: WalletState,
     statusLines: List<String>,
-    canUseDefaultWallet: Boolean,
     onClose: () -> Unit,
-    onUseDefaultWallet: () -> Unit,
     onCreateWallet: () -> Unit,
     onRestoreFromSeed: () -> Unit,
     onRestoreFromRelay: () -> Unit
@@ -3341,30 +3285,7 @@ private fun SparkSetupContent(
 
         Spacer(Modifier.height(28.dp))
 
-        // Primary "Use my default wallet" gets the orange+glow treatment
-        // so the obvious next step (re-derive the user's existing wallet)
-        // reads as the default. Other paths collapse under "More options"
-        // — but if there's no default option visible, expand by default
-        // so users still see every path immediately.
-        if (canUseDefaultWallet) {
-            WalletModeRow(
-                leadingIcon = {
-                    Icon(
-                        Icons.Outlined.VpnKey,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
-                },
-                title = stringResource(R.string.wallet_use_default),
-                subtitle = stringResource(R.string.wallet_default_subtitle),
-                highlighted = true,
-                onClick = onUseDefaultWallet
-            )
-            Spacer(Modifier.height(20.dp))
-        }
-
-        var moreOptionsExpanded by remember { mutableStateOf(!canUseDefaultWallet) }
+        var moreOptionsExpanded by remember { mutableStateOf(true) }
         val chevronRotation by animateFloatAsState(
             targetValue = if (moreOptionsExpanded) 180f else 0f,
             label = "more-options-chevron"
@@ -3559,8 +3480,7 @@ private fun SparkRestoreSeedContent(
 @Composable
 private fun SparkBackupContent(
     mnemonic: String,
-    onConfirm: () -> Unit,
-    isDefaultWallet: Boolean = false
+    onConfirm: () -> Unit
 ) {
     val words = mnemonic.split(" ")
     val clipboardManager = LocalClipboardManager.current
@@ -3575,19 +3495,11 @@ private fun SparkBackupContent(
         color = MaterialTheme.colorScheme.onSurface
     )
     Spacer(Modifier.height(8.dp))
-    if (isDefaultWallet) {
-        Text(
-            stringResource(R.string.wallet_default_seed_info),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    } else {
-        Text(
-            "Write down these words in order and store them safely. This is the only way to recover your wallet.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error
-        )
-    }
+    Text(
+        "Write down these words in order and store them safely. This is the only way to recover your wallet.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error
+    )
 
     Spacer(Modifier.height(24.dp))
 
@@ -3689,7 +3601,7 @@ private fun SparkBackupContent(
         onClick = onConfirm,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(if (isDefaultWallet) "Done" else "I've Backed This Up")
+        Text("I've Backed This Up")
     }
 
     Spacer(Modifier.height(32.dp))
@@ -3715,7 +3627,6 @@ private fun WalletSettingsContent(
     relayBackupCheckLoading: Boolean = false,
     deleteBackupStatus: DeleteBackupStatus = DeleteBackupStatus.Idle,
     isLoggedIn: Boolean = false,
-    isDefaultWallet: Boolean = false,
     onCheckRelayBackups: () -> Unit = {},
     onDeleteRelayBackup: () -> Unit = {},
     sparkIdentityPubkey: String? = null,
@@ -3967,29 +3878,18 @@ private fun WalletSettingsContent(
                 onClick = onBackupMnemonic,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (isDefaultWallet) "View Recovery Phrase" else "Backup Recovery Phrase")
+                Text("Backup Recovery Phrase")
             }
 
-            // Relay backup is only offered for non-default Spark wallets.
-            // For default wallets the nsec is already the canonical backup
-            // and relay-backup adds no value while cluttering the screen.
-            if (!isDefaultWallet) {
-                Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
 
-                OutlinedButton(
-                    onClick = onBackupToRelay,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Backup to Nostr Relays")
-                }
-
-                // Relay backup status list intentionally omitted — iOS doesn't
-                // surface a per-relay backup display. Non-default wallets can
-                // still tap "Backup to Nostr Relays" above; the status / delete
-                // plumbing in WalletViewModel stays alive in case we want to
-                // surface it again later.
+            OutlinedButton(
+                onClick = onBackupToRelay,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Backup to Nostr Relays")
             }
         }
 
@@ -4012,13 +3912,7 @@ private fun WalletSettingsContent(
 
         Spacer(Modifier.height(32.dp))
 
-        // iOS treats both the default-Spark "Switch" and the NWC
-        // "Disconnect" cases as quiet, recoverable affordances — a
-        // card row with red text + swap icon plus a caption. Only the
-        // truly destructive Delete (non-default Spark whose seed can't
-        // be re-derived from nsec) keeps the filled-red CTA so the user
-        // notices the irreversibility.
-        val isRecoverable = walletMode == WalletMode.NWC || isDefaultWallet
+        val isRecoverable = walletMode == WalletMode.NWC
         if (isRecoverable) {
             Text(
                 stringResource(R.string.wallet_disconnect_section),
@@ -4405,11 +4299,9 @@ private fun DeleteWalletConfirmContent(
     onDelete: () -> Unit,
     onCancel: () -> Unit,
     walletMode: WalletMode = WalletMode.SPARK,
-    isDefaultWallet: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val isNwc = walletMode == WalletMode.NWC
-    val isDefault = !isNwc && isDefaultWallet
 
     Column(
         modifier = modifier
@@ -4427,7 +4319,7 @@ private fun DeleteWalletConfirmContent(
         // wallet." Matches the iOS-red used on the entry-point card.
         val confirmAccent = Color(0xFFFF3B30)
         Icon(
-            if (isDefault) Icons.Default.SwapHoriz else Icons.Default.Close,
+            Icons.Default.Close,
             contentDescription = null,
             modifier = Modifier
                 .size(64.dp)
@@ -4439,29 +4331,22 @@ private fun DeleteWalletConfirmContent(
         Spacer(Modifier.height(24.dp))
 
         Text(
-            when {
-                isDefault -> stringResource(R.string.wallet_switch_wallet)
-                isNwc -> "Disconnect NWC"
-                else -> "Delete Wallet"
-            },
+            if (isNwc) "Disconnect NWC" else "Delete Wallet",
             style = MaterialTheme.typography.headlineMedium,
-            color = if (isDefault) MaterialTheme.colorScheme.onSurface else confirmAccent
+            color = confirmAccent
         )
 
         Spacer(Modifier.height(16.dp))
 
         Text(
-            when {
-                isDefault -> stringResource(R.string.wallet_switch_wallet_body)
-                isNwc -> "This will remove the NWC connection string from this device. You can reconnect anytime with a new connection string."
-                else -> "This will permanently delete your wallet from this device. Your funds cannot be recovered without your recovery phrase."
-            },
+            if (isNwc) "This will remove the NWC connection string from this device. You can reconnect anytime with a new connection string."
+            else "This will permanently delete your wallet from this device. Your funds cannot be recovered without your recovery phrase.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
 
-        if (!isNwc && !isDefault) {
+        if (!isNwc) {
             Spacer(Modifier.height(8.dp))
 
             Text(
@@ -4487,19 +4372,13 @@ private fun DeleteWalletConfirmContent(
         Button(
             onClick = onDelete,
             modifier = Modifier.fillMaxWidth(),
-            enabled = isNwc || isDefault || confirmText == "DELETE",
+            enabled = isNwc || confirmText == "DELETE",
             colors = ButtonDefaults.buttonColors(
                 containerColor = confirmAccent,
                 contentColor = Color.White
             )
         ) {
-            Text(
-                when {
-                    isDefault -> stringResource(R.string.wallet_switch_wallet)
-                    isNwc -> "Disconnect"
-                    else -> "Delete Wallet"
-                }
-            )
+            Text(if (isNwc) "Disconnect" else "Delete Wallet")
         }
 
         Spacer(Modifier.height(12.dp))

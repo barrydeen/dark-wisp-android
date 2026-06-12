@@ -96,7 +96,6 @@ import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.NipA3
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
-import com.darkwisp.app.nostr.toNpub
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.ContactRepository

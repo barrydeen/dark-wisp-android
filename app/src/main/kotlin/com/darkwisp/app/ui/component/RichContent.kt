@@ -108,7 +108,6 @@ import com.darkwisp.app.R
 import com.darkwisp.app.nostr.Bolt11
 import com.darkwisp.app.nostr.Noffer
 import com.darkwisp.app.nostr.NofferData
-import com.darkwisp.app.nostr.toNpub
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.toHex

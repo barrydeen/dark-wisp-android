@@ -151,6 +151,8 @@ fun UserProfileScreen(
     onQuotedNoteClick: ((String) -> Unit)? = null,
     onReact: (NostrEvent, String) -> Unit = { _, _ -> },
     onZap: (NostrEvent, Long, String, Boolean, Boolean) -> Unit = { _, _, _, _, _ -> },
+    onZapInstant: ((NostrEvent) -> Unit)? = null,
+    zapPrefs: com.darkwisp.app.repo.ZapPreferences,
     userPubkey: String? = null,
     isWalletConnected: Boolean = false,
     onWallet: () -> Unit = {},
@@ -285,6 +287,7 @@ fun UserProfileScreen(
                 onZap(event, amountMsats, message, isAnonymous, isPrivate)
             },
             onGoToWallet = onWallet,
+            zapPrefsRepo = zapPrefs,
             canPrivateZap = resolvedCanPrivateZap,
             recipientPubkey = zapRecipient,
             recipientHasLud16 = eventRepo?.getProfileData(zapRecipient)
@@ -303,6 +306,7 @@ fun UserProfileScreen(
                 onZapProfile?.invoke(amountMsats, message, isAnonymous)
             },
             onGoToWallet = onWallet,
+            zapPrefsRepo = zapPrefs,
             canPrivateZap = false,
             recipientPubkey = profilePubkey.ifEmpty { null },
             recipientHasLud16 = profile?.let { !it.lud16.isNullOrBlank() } ?: true,
@@ -795,6 +799,7 @@ fun UserProfileScreen(
                                 userReactionEmojis = userEmojis,
                                 hasUserReposted = hasUserReposted,
                                 onZap = { zapTargetEvent = event },
+                                onZapLongPress = { onZapInstant?.invoke(event) ?: run { zapTargetEvent = event } },
                                 hasUserZapped = hasUserZapped,
                                 likeCount = likeCount,
                                 replyCount = replyCount,
@@ -979,6 +984,7 @@ fun UserProfileScreen(
                                 userReactionEmojis = userEmojis,
                                 hasUserReposted = hasUserReposted2,
                                 onZap = { zapTargetEvent = event },
+                                onZapLongPress = { onZapInstant?.invoke(event) ?: run { zapTargetEvent = event } },
                                 hasUserZapped = hasUserZapped2,
                                 likeCount = likeCount,
                                 replyCount = replyCount,

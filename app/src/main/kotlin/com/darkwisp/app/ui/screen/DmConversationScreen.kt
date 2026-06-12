@@ -123,6 +123,7 @@ fun DmConversationScreen(
     socialActionManager: SocialActionManager? = null,
     isWalletConnected: Boolean = false,
     onGoToWallet: () -> Unit = {},
+    zapPrefs: com.darkwisp.app.repo.ZapPreferences,
     noteActions: com.darkwisp.app.ui.component.NoteActions? = null,
     resolvedEmojis: Map<String, String> = emptyMap(),
     unicodeEmojis: List<String> = emptyList(),
@@ -635,6 +636,7 @@ fun DmConversationScreen(
                 zapTargetMessage = null
                 onGoToWallet()
             },
+            zapPrefsRepo = zapPrefs,
             recipientPubkey = zapTargetMessage?.senderPubkey,
             recipientHasLud16 = zapTargetMessage?.senderPubkey
                 ?.let { pk -> eventRepo?.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() } } ?: true,

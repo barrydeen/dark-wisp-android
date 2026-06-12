@@ -67,3 +67,11 @@
 # runtime guards; the classes don't exist on Android by design.
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
+
+# Strip verbose/debug logging in minified builds. R8 removes the calls and,
+# with them, the per-event string formatting in hot paths (RelayPool and
+# EventRepository log per relay message / per event). Log.w/Log.e are kept.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}

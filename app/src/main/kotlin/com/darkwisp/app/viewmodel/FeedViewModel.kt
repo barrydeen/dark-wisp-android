@@ -431,7 +431,10 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     fun markLoadingComplete() = feedSub.markLoadingComplete()
 
     // -- Startup delegates --
-    fun initRelays() = startup.initRelays()
+    fun initRelays() {
+        interfacePrefs.reload(getUserPubkey())
+        startup.initRelays()
+    }
     fun setTorEnabled(enabled: Boolean) = startup.setTorEnabled(enabled)
     fun resetForAccountSwitch() {
         startup.resetForAccountSwitch()
@@ -440,6 +443,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun reloadForNewAccount() {
         safetyPrefs.reload(getUserPubkey())
+        interfacePrefs.reload(getUserPubkey())
         startup.reloadForNewAccount()
         groupRepo.reload(getUserPubkey())
     }

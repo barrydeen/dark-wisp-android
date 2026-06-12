@@ -2207,11 +2207,132 @@ private fun WalletModeSelectionContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+
+        Spacer(Modifier.weight(2f))
+
+        // Spark — primary, full-bleed orange with glowing shadow stack.
+        WalletPrimaryRow(
+            leadingIcon = {
+                Image(
+                    painter = painterResource(R.drawable.ic_spark_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White)
+                )
+            },
+            title = stringResource(R.string.wallet_spark_title),
+            subtitle = stringResource(R.string.wallet_spark_subtitle_recommended),
+            onClick = onSelectSpark
+        )
+        Spacer(Modifier.height(12.dp))
+        // NWC — peer-level dark surface row; not buried under "More options".
+        WalletModeRow(
+            leadingIcon = {
+                Image(
+                    painter = painterResource(R.drawable.ic_nwc_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = stringResource(R.string.wallet_nwc_title),
+            subtitle = stringResource(R.string.wallet_nwc_subtitle),
+            onClick = onSelectNwc
+        )
+        Spacer(Modifier.height(24.dp))
     }
 
-    Spacer(Modifier.height(12.dp))
+/**
+ * Primary mode-picker row — full-bleed accent fill, white text, layered
+ * shadow glow underneath. Used for the Spark wallet row on the mode
+ * picker AND the "Use my default wallet" row on the Spark sub-screen.
+ *
+ * Glow is two stacked shadows (tight 55% / wide 35%) both in
+ * `wispZapColor`, mirroring the iOS rendering.
+ */
+@Composable
+private fun WalletPrimaryRow(
+    leadingIcon: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    val accent = WispThemeColors.zapColor
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // Wide outer halo, then tighter inner glow. Compose colored
+            // shadows clip at the path bounds, so the wider elevation
+            // bleeds farther than the tight one.
+            .shadow(elevation = 24.dp, shape = shape, spotColor = accent, ambientColor = accent)
+            .shadow(elevation = 10.dp, shape = shape, spotColor = accent, ambientColor = accent)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+            color = accent,
+            shape = shape
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(36.dp)
+                ) { leadingIcon() }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
 
-    Card(
+@Composable
+private fun WalletModeRow(
+    leadingIcon: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    highlighted: Boolean = false
+) {
+    val accent = WispThemeColors.zapColor
+    val shape = RoundedCornerShape(14.dp)
+    val containerColor = if (highlighted) accent else MaterialTheme.colorScheme.surfaceVariant
+    val titleColor = if (highlighted) Color.White else MaterialTheme.colorScheme.onSurface
+    val subtitleColor = if (highlighted) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val arrowColor = if (highlighted) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+    // Layered shadows produce the iOS soft-glow halo: wide outer bleed +
+    // tighter inner glow, both tinted with the accent. Colored shadows
+    // only honor `ambientColor`/`spotColor` on API 28+; below that the
+    // device falls back to the system grey shadow.
+    val highlightModifier = if (highlighted) {
+        Modifier
+            .shadow(elevation = 24.dp, shape = shape, ambientColor = accent, spotColor = accent)
+            .shadow(elevation = 10.dp, shape = shape, ambientColor = accent, spotColor = accent)
+    } else Modifier
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onRestoreSpark() },

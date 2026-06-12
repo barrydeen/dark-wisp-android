@@ -178,6 +178,7 @@
     <string name="placeholder_lightning_or_invoice">Lightning address or invoice</string>
     <string name="placeholder_user_domain">user@domain.com or lnbc…</string>
     <string name="placeholder_amount_sats">Amount (sats)</string>
+    <string name="placeholder_amount_currency">Amount (%1$s)</string>
     <string name="placeholder_message_optional">Message (optional)</string>
     <string name="placeholder_new_list_name">New list name</string>
     <string name="placeholder_add_word_phrase">Add a word or phrase</string>
@@ -844,7 +845,7 @@
     <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
 
     <string name="zap_send_money">Send Money</string>
-    <string name="zap_x_amount">Zap %1$s</string>
+    <string name="zap_x_amount">Send %1$s</string>
 
     <string name="amount_sats_format">%1$s sats</string>
     <string name="wallet_fee_money">fee: %1$s</string>

@@ -505,7 +505,7 @@ fun UserProfileScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -578,9 +578,12 @@ fun UserProfileScreen(
             }
 
             stickyHeader {
+                // Tab strip uses `background` (true near-black) instead of
+                // `surface` so the chrome reads as part of the body and
+                // doesn't stack two distinct grey tiers — matches iOS.
                 ScrollableTabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.background,
                     edgePadding = 16.dp
                 ) {
                     tabTitles.forEachIndexed { index, title ->
@@ -599,7 +602,7 @@ fun UserProfileScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface)
+                            .background(MaterialTheme.colorScheme.background)
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {

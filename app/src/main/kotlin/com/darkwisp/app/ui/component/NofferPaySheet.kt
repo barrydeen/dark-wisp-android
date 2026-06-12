@@ -69,11 +69,15 @@ import com.darkwisp.app.nostr.Bolt11
 import com.darkwisp.app.nostr.NofferData
 import com.darkwisp.app.nostr.NofferException
 import com.darkwisp.app.nostr.NofferPricing
+import com.darkwisp.app.nostr.LocalSigner
+import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.ProfileData
+import com.darkwisp.app.nostr.RemoteSigner
 import com.darkwisp.app.nostr.toNpub
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.NofferClient
+import com.darkwisp.app.repo.SigningMode
 import com.darkwisp.app.repo.ZapSender
 import com.darkwisp.app.ui.theme.WispThemeColors
 import com.darkwisp.app.ui.util.AmountFormatter
@@ -243,14 +247,30 @@ fun NofferPaySheet(
             inFlight = true
             status = null
             try {
-                val keypair = withContext(Dispatchers.IO) { KeyRepository(context.applicationContext).getKeypair() }
-                if (keypair == null) {
+                // Build a signer matching the active signing mode so external
+                // signers (e.g. Amber) work — paying an offer doesn't require
+                // a local private key, just signing + NIP-44 capability.
+                val signer: NostrSigner? = withContext(Dispatchers.IO) {
+                    val keyRepo = KeyRepository(context.applicationContext)
+                    when (keyRepo.getSigningMode()) {
+                        SigningMode.LOCAL -> keyRepo.getKeypair()?.let { LocalSigner(it.privkey, it.pubkey) }
+                        SigningMode.REMOTE -> {
+                            val pubkey = keyRepo.getPubkeyHex()
+                            val pkg = keyRepo.getSignerPackage()
+                            if (pubkey != null && pkg != null) {
+                                RemoteSigner(pubkey, context.applicationContext.contentResolver, pkg)
+                            } else null
+                        }
+                        SigningMode.READ_ONLY -> null
+                    }
+                }
+                if (signer == null) {
                     status = "Sign in to pay an offer."
                     return@launch
                 }
                 val bolt11 = NofferClient.requestInvoice(
                     noffer = noffer,
-                    keypair = keypair,
+                    signer = signer,
                     amountSats = if (needsAmountField) amountSats else null
                 )
                 // Map the payment hash to the offer's service pubkey so the

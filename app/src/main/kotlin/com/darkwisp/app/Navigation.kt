@@ -97,6 +97,7 @@ import com.darkwisp.app.ui.component.FloatingVideoPlayer
 import com.darkwisp.app.ui.component.PipController
 import com.darkwisp.app.ui.component.FullScreenVideoPlayer
 import com.darkwisp.app.ui.component.FullScreenVideoState
+import com.darkwisp.app.ui.component.NsecPasteWarningOverlay
 import com.darkwisp.app.ui.screen.OnboardingSuggestionsScreen
 import com.darkwisp.app.ui.screen.OnboardingTopicsScreen
 import com.darkwisp.app.ui.screen.OnboardingFirstPostScreen
@@ -3413,6 +3414,7 @@ fun WispNavHost(
             .align(Alignment.BottomCenter)
             .padding(bottom = 16.dp)
     )
+    NsecPasteWarningOverlay()
     } // Box
 
     } // Scaffold

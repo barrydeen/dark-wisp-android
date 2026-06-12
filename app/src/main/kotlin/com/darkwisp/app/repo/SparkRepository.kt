@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.darkwisp.app.BuildConfig
+import com.darkwisp.app.nostr.Keys
 import java.io.File
 import java.security.SecureRandom
 
@@ -100,6 +101,12 @@ class SparkRepository(
     private val _paymentReceived = MutableSharedFlow<Long>(extraBufferCapacity = 8)
     override val paymentReceived: SharedFlow<Long> = _paymentReceived
 
+    // Identity pubkey from the SDK's GetInfoResponse — exposed for the
+    // Wallet Info expandable in settings. Populated on first balance fetch
+    // after connect.
+    private val _identityPubkey = MutableStateFlow<String?>(null)
+    val identityPubkey: StateFlow<String?> = _identityPubkey
+
     private fun emitStatus(msg: String) {
         Log.d(TAG, msg)
         _statusLog.tryEmit(msg)
@@ -112,16 +119,37 @@ class SparkRepository(
     override fun hasConnection(): Boolean = hasMnemonic()
 
     fun newMnemonic(): String {
-        val wordlist = BIP39_WORDS
-        if (wordlist.size < 2048) {
-            // Fallback: generate 16 random bytes and hex-encode as a placeholder.
-            // The user should provide a proper BIP39 mnemonic via restore.
-            error("BIP39 wordlist not available. Bundle bip39-english.txt in resources.")
-        }
+        val wordlist = requireWordlist()
         val random = SecureRandom()
         val entropy = ByteArray(16) // 128 bits → 12 words
         random.nextBytes(entropy)
         return entropyToMnemonic(entropy, wordlist)
+    }
+
+    /**
+     * Generate a BIP39 mnemonic deterministically from a Nostr private key.
+     * The same privkey always produces the same mnemonic, so a user's default
+     * Spark wallet is recoverable on any device by signing in with their nsec.
+     *
+     * Does NOT auto-acknowledge the seed backup — iOS's equivalent leaves the
+     * ack flag false so the "default wallet is secured by your key" welcome
+     * banner can render, and Android should match. The user can dismiss the
+     * banner by tapping it / acknowledging in the seed-view page.
+     */
+    fun generateDefaultFromPrivkey(privkey: ByteArray): String {
+        val wordlist = requireWordlist()
+        val entropy = Keys.deriveSparkEntropy(privkey)
+        val mnemonic = entropyToMnemonic(entropy, wordlist)
+        saveMnemonic(mnemonic)
+        return mnemonic
+    }
+
+    private fun requireWordlist(): List<String> {
+        val wordlist = BIP39_WORDS
+        if (wordlist.size < 2048) {
+            error("BIP39 wordlist not available. Bundle bip39-english.txt in resources.")
+        }
+        return wordlist
     }
 
     private fun entropyToMnemonic(entropy: ByteArray, wordlist: List<String>): String {
@@ -181,8 +209,19 @@ class SparkRepository(
         return null
     }
 
+    /**
+     * Save a Spark mnemonic. Resets the seed-backup ack flag because
+     * the previous acknowledgement applied to whatever mnemonic was in
+     * place before — a newly-restored / newly-pasted wallet should be
+     * treated as un-acked so the welcome / backup banner renders for
+     * the new seed. Mirrors iOS `SparkWallet.saveMnemonic` which clears
+     * the equivalent `spark_seed_acked_<pubkey>` UserDefaults key.
+     */
     fun saveMnemonic(mnemonic: String) {
-        encPrefs.edit().putString("spark_mnemonic", mnemonic).apply()
+        encPrefs.edit()
+            .putString("spark_mnemonic", mnemonic)
+            .remove("seed_backup_acked")
+            .apply()
     }
 
     fun getMnemonic(): String? = encPrefs.getString("spark_mnemonic", null)
@@ -195,6 +234,30 @@ class SparkRepository(
         _balance.value = null
         _isConnected.value = false
     }
+
+    /**
+     * True when the currently-saved mnemonic matches the deterministic
+     * derivation `entropyToMnemonic(Keys.deriveSparkEntropy(privkey))` for
+     * this account — i.e. the wallet is recoverable on any device by
+     * signing in with the same key.
+     *
+     * Compares the stored mnemonic against the deterministic derivation
+     * rather than relying on a sticky `spark_is_default` flag — a wallet
+     * restored from a non-default NIP-78 backup correctly reports `false`
+     * here even on a device where the user had previously generated the
+     * default wallet (a stale flag was surfacing the "default wallet"
+     * banner over a non-default restored wallet on iOS; mirror fix here).
+     */
+    fun isDefaultWallet(privkey: ByteArray): Boolean {
+        val current = encPrefs.getString("spark_mnemonic", null) ?: return false
+        val wordlist = BIP39_WORDS
+        if (wordlist.size < 2048) return false
+        val derived = entropyToMnemonic(Keys.deriveSparkEntropy(privkey), wordlist)
+        return normalizeMnemonic(current) == normalizeMnemonic(derived)
+    }
+
+    private fun normalizeMnemonic(mnemonic: String): String =
+        mnemonic.trim().lowercase().replace(Regex("\\s+"), " ")
 
     fun isSeedBackupAcknowledged(): Boolean =
         encPrefs.getBoolean("seed_backup_acked", false)
@@ -306,6 +369,7 @@ class SparkRepository(
             val instance = sdk ?: return
             val info = instance.getInfo(GetInfoRequest(ensureSynced = false))
             _balance.value = info.balanceSats.toLong() * 1000 // convert sats to msats
+            _identityPubkey.value = info.identityPubkey
         } catch (e: Exception) {
             Log.e(TAG, "Failed to refresh balance", e)
         }
@@ -317,6 +381,7 @@ class SparkRepository(
             val info = instance.getInfo(GetInfoRequest(ensureSynced = false))
             val balanceMsats = info.balanceSats.toLong() * 1000
             _balance.value = balanceMsats
+            _identityPubkey.value = info.identityPubkey
             Result.success(balanceMsats)
         } catch (e: Exception) {
             Result.failure(e)

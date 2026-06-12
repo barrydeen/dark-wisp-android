@@ -217,8 +217,12 @@ fun PostCard(
     var expandedDetails by remember { mutableStateOf(false) }
     var showTranslation by remember { mutableStateOf(true) }
 
+    // Wrap content + divider so the divider can run full-width while the
+    // content keeps its 16dp horizontal padding. Tap-to-open lives on the
+    // content Column so the (tiny) divider area isn't tappable.
+    Column(modifier = modifier.fillMaxWidth()) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onNoteClick)
             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -846,9 +850,13 @@ fun PostCard(
                 }
             }
         }
-        if (showDivider) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
-        }
+    }
+    if (showDivider) {
+        // Full-bleed inter-post separator — sits outside the content
+        // Column's 16dp horizontal padding so it spans edge to edge,
+        // matching the iOS feed.
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+    }
     }
 }
 

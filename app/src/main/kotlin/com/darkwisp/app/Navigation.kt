@@ -242,13 +242,24 @@ fun WispNavHost(
 
     relayViewModel.relayPool = feedViewModel.relayPool
 
+    // On process death during anon mode, the ephemeral keypair is gone.
+    // Clear the stale anon session flag so the app starts normally.
+    LaunchedEffect(Unit) {
+        if (feedViewModel.keyRepo.getAnonSessionPubkey() != null) {
+            feedViewModel.keyRepo.clearAnonSession()
+        }
+    }
+
     // Unified signer — handles both LOCAL (nsec) and REMOTE (NIP-55) modes
-    // Reactive: recomposes on login, logout, and account switch
+    // Reactive: recomposes on login, logout, account switch, and anon mode toggle
     val context = LocalContext.current
     val signingMode by authViewModel.signingModeFlow.collectAsState()
     val npub by authViewModel.npub.collectAsState()
-    val activeSigner = remember(signingMode, npub) {
-        when (signingMode) {
+    val anonMode by feedViewModel.anonMode.collectAsState()
+    val activeSigner = remember(signingMode, npub, anonMode) {
+        if (anonMode != null) {
+            LocalSigner(anonMode!!.keypair.privkey, anonMode!!.keypair.pubkey)
+        } else when (signingMode) {
             SigningMode.REMOTE -> {
                 val pubkey = authViewModel.keyRepo.getPubkeyHex() ?: ""
                 val pkg = authViewModel.keyRepo.getSignerPackage() ?: ""
@@ -298,6 +309,7 @@ fun WispNavHost(
     var groupListInitKey by rememberSaveable { mutableStateOf(0) }
 
     val onSwitchAccount: (String) -> Unit = { pubkeyHex ->
+        if (anonMode != null) feedViewModel.exitAnonMode()
         feedViewModel.clearSigner()
         feedViewModel.resetForAccountSwitch()
         walletViewModel.suspendForAccountSwitch()  // disconnect only, preserve credentials
@@ -316,10 +328,28 @@ fun WispNavHost(
     }
 
     val onAddAccount: () -> Unit = {
+        if (anonMode != null) feedViewModel.exitAnonMode()
         authViewModel.isAddingAccount = true
         feedViewModel.resetForAccountSwitch()
         walletViewModel.suspendForAccountSwitch()  // disconnect only, preserve credentials
         navController.navigate(Routes.SPLASH) {
+            popUpTo(0) { inclusive = true }
+        }
+    }
+
+    val onEnterAnonMode: () -> Unit = {
+        feedViewModel.enterAnonMode()
+        feedViewModel.resetForAnonSwitch()
+        navController.navigate(Routes.LOADING) {
+            popUpTo(0) { inclusive = true }
+        }
+    }
+
+    val onExitAnonMode: () -> Unit = {
+        feedViewModel.exitAnonMode()
+        feedViewModel.resetForAccountSwitch()
+        feedViewModel.reloadForNewAccount()
+        navController.navigate(Routes.LOADING) {
             popUpTo(0) { inclusive = true }
         }
     }
@@ -629,6 +659,7 @@ fun WispNavHost(
                         isZapAnimating = isZapAnimating,
                         isReplyAnimating = isReplyAnimating,
                         notifSoundEnabled = notifSoundEnabled,
+                        hiddenTabs = if (anonMode != null) setOf(BottomTab.WALLET) else emptySet(),
                         onTabSelected = { tab ->
                             if (currentRoute == tab.route) {
                                 scrollToTopTrigger++
@@ -816,6 +847,8 @@ fun WispNavHost(
                 onScanResult = { route ->
                     navController.navigate(route)
                 },
+                onEnterAnonMode = onEnterAnonMode,
+                onExitAnonMode = onExitAnonMode,
                 accounts = accounts,
                 onSwitchAccount = onSwitchAccount,
                 onAddAccount = onAddAccount,

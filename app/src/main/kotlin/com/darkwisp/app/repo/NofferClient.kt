@@ -2,15 +2,12 @@ package com.darkwisp.app.repo
 
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
-import com.darkwisp.app.nostr.Keys
-import com.darkwisp.app.nostr.Nip44
 import com.darkwisp.app.nostr.NofferData
 import com.darkwisp.app.nostr.NofferException
 import com.darkwisp.app.nostr.Noffer
-import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.RelayMessage
 import com.darkwisp.app.nostr.hexToByteArray
-import com.darkwisp.app.nostr.toHex
 import com.darkwisp.app.relay.Relay
 import com.darkwisp.app.relay.RelayConfig
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +53,7 @@ object NofferClient {
      */
     suspend fun requestInvoice(
         noffer: NofferData,
-        keypair: Keys.Keypair,
+        signer: NostrSigner,
         amountSats: Long?,
         description: String? = null,
         zapRequest: String? = null,
@@ -64,14 +61,14 @@ object NofferClient {
         allowRetry: Boolean = true
     ): String {
         return try {
-            requestInvoiceOnce(noffer, keypair, amountSats, description, zapRequest, timeoutMs)
+            requestInvoiceOnce(noffer, signer, amountSats, description, zapRequest, timeoutMs)
         } catch (err: NofferException) {
             // Expired or moved — if the service handed us a replacement, decode
             // it and retry exactly once against the new offer.
             if (allowRetry && err.code == 3) {
                 val updated = err.latest?.let { Noffer.decodeOrNull(it) } ?: throw err
                 requestInvoice(
-                    noffer = updated, keypair = keypair, amountSats = amountSats,
+                    noffer = updated, signer = signer, amountSats = amountSats,
                     description = description, zapRequest = zapRequest,
                     timeoutMs = timeoutMs, allowRetry = false
                 )
@@ -83,25 +80,17 @@ object NofferClient {
 
     private suspend fun requestInvoiceOnce(
         noffer: NofferData,
-        keypair: Keys.Keypair,
+        signer: NostrSigner,
         amountSats: Long?,
         description: String?,
         zapRequest: String?,
         timeoutMs: Long
     ): String {
-        if (keypair.privkey.size != 32) {
-            throw NofferException(0, "Sign in with a key that can sign to pay an offer.")
-        }
         val servicePubkey = noffer.pubkey
-        val peer = try {
+        try {
             servicePubkey.hexToByteArray()
         } catch (_: Exception) {
             throw NofferException(0, "Invalid offer service pubkey.")
-        }
-        val convKey = try {
-            Nip44.getConversationKey(keypair.privkey, peer)
-        } catch (_: Exception) {
-            throw NofferException(0, "Could not derive an encryption key for the offer.")
         }
 
         // Build the encrypted request payload. amount_sats is required for
@@ -112,11 +101,15 @@ object NofferClient {
             if (!description.isNullOrEmpty()) put("description", JsonPrimitive(description.take(100)))
             if (!zapRequest.isNullOrEmpty()) put("zap", JsonPrimitive(zapRequest))
         }.toString()
-        val ciphertext = Nip44.encrypt(payload, convKey)
+        // NIP-44 encryption and event signing go through the signer so this
+        // works for both local keys and external signers (e.g. Amber).
+        val ciphertext = try {
+            signer.nip44Encrypt(payload, servicePubkey)
+        } catch (_: Exception) {
+            throw NofferException(0, "Could not encrypt the offer request.")
+        }
 
-        val event = NostrEvent.create(
-            privkey = keypair.privkey,
-            pubkey = keypair.pubkey,
+        val event = signer.signEvent(
             kind = KIND_NOFFER_RPC,
             content = ciphertext,
             tags = listOf(listOf("p", servicePubkey), listOf("clink_version", "1"))
@@ -136,7 +129,7 @@ object NofferClient {
                 val filter = Filter(
                     kinds = listOf(KIND_NOFFER_RPC),
                     authors = listOf(servicePubkey),
-                    pTags = listOf(keypair.pubkey.toHex()),
+                    pTags = listOf(signer.pubkeyHex),
                     since = System.currentTimeMillis() / 1000 - 5
                 )
                 relay.send(ClientMessage.req(subId, filter))
@@ -151,7 +144,7 @@ object NofferClient {
                     // relays that ignore filters.
                     if (response.pubkey != servicePubkey) return@first false
                     val plaintext = try {
-                        Nip44.decrypt(response.content, convKey)
+                        signer.nip44Decrypt(response.content, servicePubkey)
                     } catch (_: Exception) {
                         return@first false
                     }

@@ -1441,12 +1441,12 @@ class WalletViewModel(
         _isLoading.value = true
         viewModelScope.launch {
             try {
-                val keypair = keyRepo.getKeypair()
-                if (keypair == null) {
+                val signer = getSigner() ?: buildSigner()
+                if (signer == null) {
                     _sendError.value = "Sign in with a key that can sign to pay an offer"
                     return@launch
                 }
-                val invoice = NofferClient.requestInvoice(noffer, keypair, amountSats)
+                val invoice = NofferClient.requestInvoice(noffer, signer, amountSats)
                 val decoded = Bolt11.decode(invoice)
                 // Map the payment hash to the offer's service pubkey so the
                 // transaction history resolves the payee's profile, same as zaps.

@@ -286,10 +286,12 @@ fun UserProfileScreen(
             },
             onGoToWallet = onWallet,
             canPrivateZap = resolvedCanPrivateZap,
-            recipientPubkey = zapRecipient,
-            recipientHasLud16 = eventRepo?.getProfileData(zapRecipient)
-                ?.let { !it.lud16.isNullOrBlank() } ?: true,
-            fetchPaymentTargets = fetchPaymentTargets
+            recipientPubkey = zapTargetEvent?.pubkey,
+            recipientHasLud16 = zapTargetEvent?.pubkey?.let { pk ->
+                eventRepo?.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() }
+            } ?: true,
+            fetchPaymentTargets = fetchPaymentTargets,
+            profileLookup = { eventRepo?.getProfileData(it) }
         )
     }
 
@@ -304,9 +306,11 @@ fun UserProfileScreen(
             },
             onGoToWallet = onWallet,
             canPrivateZap = false,
-            recipientPubkey = profilePubkey.ifEmpty { null },
+            // Profile zap — recipient is the profile being viewed.
+            recipientPubkey = profile?.pubkey ?: profilePubkey.ifEmpty { null },
             recipientHasLud16 = profile?.let { !it.lud16.isNullOrBlank() } ?: true,
-            fetchPaymentTargets = fetchPaymentTargets
+            fetchPaymentTargets = fetchPaymentTargets,
+            profileLookup = { pk -> profile?.takeIf { it.pubkey == pk } }
         )
     }
 

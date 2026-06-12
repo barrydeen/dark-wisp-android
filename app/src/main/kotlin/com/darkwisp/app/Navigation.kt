@@ -1236,9 +1236,10 @@ fun WispNavHost(
                     },
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && userHasDmRelays && recipientHasDmRelays,
-                    recipientPubkey = zapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, zapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = searchZapTarget?.pubkey,
+                    recipientHasLud16 = (searchZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
             SearchScreen(
@@ -1610,9 +1611,10 @@ fun WispNavHost(
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && feedViewModel.relayPool.hasDmRelays() && recipientHasDmRelays,
                     initialSatsHint = groupRoomZapInitialSats,
-                    recipientPubkey = zapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, zapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = groupRoomZapTarget?.pubkey,
+                    recipientHasLud16 = (groupRoomZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
             val groupRoomMediaLauncher = rememberLauncherForActivityResult(
@@ -1890,9 +1892,10 @@ fun WispNavHost(
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && threadUserHasDmRelays && threadRecipientHasDmRelays,
                     forcePrivate = threadZapTarget?.id?.let { feedViewModel.eventRepo.isPrivate(it) } == true,
-                    recipientPubkey = threadZapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, threadZapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = threadZapTarget?.pubkey,
+                    recipientHasLud16 = (threadZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
             val threadSetListedIds by feedViewModel.bookmarkSetRepo.allListedEventIds.collectAsState()
@@ -2062,9 +2065,10 @@ fun WispNavHost(
                     },
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && hashtagUserHasDmRelays && hashtagRecipientHasDmRelays,
-                    recipientPubkey = hashtagZapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, hashtagZapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = hashtagZapTarget?.pubkey,
+                    recipientHasLud16 = (hashtagZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
 
@@ -2216,9 +2220,10 @@ fun WispNavHost(
                     },
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && setFeedUserHasDmRelays && setFeedRecipientHasDmRelays,
-                    recipientPubkey = setFeedZapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, setFeedZapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = setFeedZapTarget?.pubkey,
+                    recipientHasLud16 = (setFeedZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
 
@@ -2383,9 +2388,10 @@ fun WispNavHost(
                     },
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && articleUserHasDmRelays && articleRecipientHasDmRelays,
-                    recipientPubkey = zapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, zapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = articleZapTarget?.pubkey,
+                    recipientHasLud16 = (articleZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
 
@@ -2593,9 +2599,13 @@ fun WispNavHost(
                     // derivation; live-stream zaps target an addressable event
                     // (a-tag) instead, so private zaps don't apply here.
                     canPrivateZap = false,
-                    recipientPubkey = zapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, zapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    // Live streams: use the streamer override pubkey when set
+                    // (the chat host is what's interesting to identify), else
+                    // fall back to the post author.
+                    recipientPubkey = liveZapRecipientOverride ?: liveZapTarget?.pubkey,
+                    recipientHasLud16 = (liveZapRecipientOverride ?: liveZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
             val streamActivityEventId = remember(hostPubkey, dTag) {
@@ -3154,9 +3164,10 @@ fun WispNavHost(
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     canPrivateZap = feedViewModel.hasLocalKeypair && notifUserHasDmRelays && notifRecipientHasDmRelays,
                     forcePrivate = notifZapTarget?.id?.let { feedViewModel.eventRepo.isPrivate(it) } == true,
-                    recipientPubkey = notifZapRecipient,
-                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, notifZapRecipient),
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    recipientPubkey = notifZapTarget?.pubkey,
+                    recipientHasLud16 = (notifZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
 
@@ -3178,7 +3189,8 @@ fun WispNavHost(
                     recipientPubkey = notifDmZapTarget?.senderPubkey,
                     recipientHasLud16 = notifDmZapTarget?.senderPubkey
                         ?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) }
                 )
             }
 

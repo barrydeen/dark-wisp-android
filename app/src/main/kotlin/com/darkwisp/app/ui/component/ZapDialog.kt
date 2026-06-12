@@ -1,20 +1,6 @@
 package com.darkwisp.app.ui.component
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,82 +12,105 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.automirrored.outlined.Message
-
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import kotlinx.coroutines.delay
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.NipA3
+import com.darkwisp.app.nostr.ProfileData
+import com.darkwisp.app.repo.ExchangeRateRepository
+import com.darkwisp.app.repo.FiatCurrency
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.ZapPreferences
 import com.darkwisp.app.repo.ZapPreset
 import com.darkwisp.app.ui.theme.WispThemeColors
 import com.darkwisp.app.ui.util.AmountFormatter
-import androidx.compose.runtime.collectAsState
-import kotlin.math.sin
-import kotlin.random.Random
+import kotlinx.coroutines.launch
 
-private val LightningYellow: Color
-    @Composable get() = WispThemeColors.zapColor
-
-private val LightningOrange: Color
-    @Composable get() = WispThemeColors.zapColor
-
-private val LightningAmber: Color
-    @Composable get() = WispThemeColors.zapColor.copy(alpha = 0.7f)
-
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Zap composer — iOS-faithful layout in a draggable bottom sheet.
+ *
+ * Layout, top to bottom:
+ *   1. Toolbar           — Close (left, pill) / Presets (right, orange pill)
+ *   2. Recipient row     — avatar + display name + lud16 + copy
+ *                          (hidden if no `profileLookup` data for the
+ *                          `recipientPubkey`)
+ *   3. Hero amount       — big orange number + "sats" / fiat caption
+ *   4. Preset strip      — wrapping FlowRow of pills + Custom-with-plus chip
+ *   5. (Custom field)    — inline OutlinedTextField shown when isCustom
+ *   6. Message field     — single-line OutlinedTextField
+ *   7. Privacy dropdown  — Public / Anonymous / Private with helper text
+ *   8. Instant zaps      — toggle bound to `quickZapEnabled` setting
+ *   9. Zap button        — full-width orange action button. Over 1M sats
+ *                          disables it; over 10K routes through a
+ *                          soft-confirmation dialog.
+ *
+ * Wrapping `ModalBottomSheet` provides drag-handle dismiss, scrim-tap
+ * dismiss, and a partial-height presentation so the sheet doesn't take
+ * over the whole viewport — fixes the "impossible to dismiss" complaint
+ * from the previous Dialog-based version.
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ZapDialog(
     isWalletConnected: Boolean,
@@ -117,8 +126,10 @@ fun ZapDialog(
     forcePrivate: Boolean = false,
     /** When opening from a quick preset (e.g. chat actions sheet), pre-select that amount in sats. */
     initialSatsHint: Int? = null,
-    /** Note author / zap recipient; enables the NIP-A3 "Other ways to pay" section. */
+    /** Recipient pubkey for the optional recipient header row. */
     recipientPubkey: String? = null,
+    /** Profile lookup for the recipient header row. Returns null if unknown. */
+    profileLookup: (String) -> ProfileData? = { null },
     /** False when the recipient's profile has no lightning address. */
     recipientHasLud16: Boolean = true,
     /** Loads the recipient's NIP-A3 payment targets (FeedViewModel::fetchPaymentTargets). */
@@ -160,9 +171,7 @@ fun ZapDialog(
                     TextButton(onClick = {
                         onDismiss()
                         onGoToWallet()
-                    }) {
-                        Text(stringResource(R.string.btn_go_to_wallet))
-                    }
+                    }) { Text(stringResource(R.string.btn_go_to_wallet)) }
                 },
                 dismissButton = {
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel)) }
@@ -176,438 +185,528 @@ fun ZapDialog(
     }
 
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val accent = WispThemeColors.zapColor
+
     val fiatPrefs = remember { FiatPreferences.get(context) }
     val fiatMode by fiatPrefs.fiatMode.collectAsState()
-    @Suppress("unused_variable") val fiatCurrency by fiatPrefs.currency.collectAsState()
-    var presets by remember { mutableStateOf(ZapPreferences(context).getPresets().sortedBy { it.amountSats }) }
+    val fiatCurrency by fiatPrefs.currency.collectAsState()
+    val interfacePrefs = remember { com.darkwisp.app.repo.InterfacePreferences(context) }
+    val zapPrefsRepo = remember { ZapPreferences(context) }
+    var presets by remember { mutableStateOf(zapPrefsRepo.getPresets().sortedBy { it.amountSats }) }
     var selectedPreset by remember { mutableStateOf<ZapPreset?>(presets.firstOrNull()) }
     var isCustom by remember { mutableStateOf(false) }
-    var customAmount by remember { mutableStateOf("") }
+    // TextFieldValue so we can pre-select the seeded amount on focus —
+    // the first keystroke then replaces the whole seed, matching the
+    // iOS "first-keystroke-replaces-seed" UX.
+    var customAmountTfv by remember { mutableStateOf(TextFieldValue("")) }
+    val customAmount = customAmountTfv.text
     var message by remember { mutableStateOf("") }
     var isAnonymous by remember { mutableStateOf(false) }
     var isPrivate by remember(forcePrivate) { mutableStateOf(forcePrivate) }
-    var editMode by remember { mutableStateOf(false) }
+    var instantZapsEnabled by remember { mutableStateOf(interfacePrefs.isQuickZapEnabled()) }
+    var showLargeAmountConfirm by remember { mutableStateOf(false) }
+    var showSavePresetDialog by remember { mutableStateOf(false) }
+    var privacyMenuExpanded by remember { mutableStateOf(false) }
+    val amountFocusRequester = remember { FocusRequester() }
+
+    val recipientProfile = recipientPubkey?.let { profileLookup(it) }
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    fun closeSheet() {
+        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+    }
 
     LaunchedEffect(initialSatsHint) {
         val hint = initialSatsHint ?: return@LaunchedEffect
         val h = hint.toLong().coerceAtLeast(1L)
-        val fromPrefs = ZapPreferences(context).getPresets().sortedBy { it.amountSats }
-        val match = fromPrefs.find { it.amountSats == h }
+        val match = presets.find { it.amountSats == h }
         if (match != null) {
             selectedPreset = match
             isCustom = false
             message = match.message
         } else {
             isCustom = true
-            customAmount = h.toString()
+            seedCustomAmount(h.toString()) { customAmountTfv = it }
             message = ""
         }
     }
 
-    val effectiveAmount = if (isCustom) {
-        customAmount.toLongOrNull() ?: 0L
+    // Seed amount from the configured instant-zap amount on first open.
+    // Auto-focus the field after the sheet's mount + transition has
+    // settled (~450ms) — matches the iOS deferral. The seed is selected
+    // so the first keystroke replaces it entirely.
+    LaunchedEffect(Unit) {
+        if (initialSatsHint == null) {
+            val seedSats = if (fiatMode) {
+                val major = interfacePrefs.getQuickZapAmountFiat()
+                (major * 100.0).toLong().coerceAtLeast(0L)
+            } else {
+                interfacePrefs.getQuickZapAmountSats()
+            }
+            if (seedSats > 0) {
+                isCustom = true
+                seedCustomAmount(seedSats.toString()) { customAmountTfv = it }
+                message = interfacePrefs.getQuickZapMessage()
+            }
+        }
+        delay(450)
+        runCatching { amountFocusRequester.requestFocus() }
+    }
+
+    val effectiveAmount: Long = if (isCustom) {
+        if (fiatMode) {
+            val cents = customAmount.toLongOrNull() ?: 0L
+            if (cents > 0) ExchangeRateRepository.fiatToSats(cents.toDouble() / 100.0, fiatCurrency) ?: 0L else 0L
+        } else {
+            customAmount.toLongOrNull() ?: 0L
+        }
     } else {
         selectedPreset?.amountSats ?: 0L
     }
-
     val effectiveMessage = if (isCustom) message else (selectedPreset?.message ?: "")
+    val overHardCap = effectiveAmount > ZAP_HARD_CAP_SATS
+    val canSavePreset = isCustom && effectiveAmount > 0 &&
+        presets.none { it.amountSats == effectiveAmount } &&
+        presets.size < 8
 
-    Dialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        // Drag handle replaces the iOS "swipe down" affordance.
     ) {
-        Surface(
+        // Two-row stack: scrollable content on top, pinned Zap button
+        // at the bottom. `imePadding()` lifts the whole stack above the
+        // keyboard so the Zap button stays visible even when the
+        // amount field is focused. `navigationBarsPadding()` keeps it
+        // above the gesture-nav handle on devices without IME up.
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = WispThemeColors.backgroundColor,
-            tonalElevation = 8.dp
+                .imePadding()
         ) {
-            Box {
-                // Background lightning effect
-                LightningBackground(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(RoundedCornerShape(28.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+            // ── 1. Toolbar ──────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PillButton(text = stringResource(R.string.btn_close), onClick = { closeSheet() })
+                PillButton(
+                    text = "Presets",
+                    onClick = { showSavePresetDialog = true },
+                    contentColor = accent,
+                    borderColor = accent.copy(alpha = 0.45f)
                 )
+            }
 
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            // ── 2. Recipient row (optional) ─────────────────────────
+            if (recipientProfile != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Header with animated bolt
-                    AnimatedBoltHeader()
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Text(
-                        text = stringResource(
-                            if (fiatMode) R.string.zap_send_money else R.string.zap_send
-                        ),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                    AsyncImage(
+                        model = recipientProfile.picture,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     )
-
-                    Spacer(Modifier.height(4.dp))
-
-                    // Amount display — tap to edit directly
-                    if (isCustom) {
-                        BasicTextField(
-                            value = customAmount,
-                            onValueChange = { customAmount = it.filter { c -> c.isDigit() } },
-                            textStyle = MaterialTheme.typography.displaySmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = LightningOrange,
-                                textAlign = TextAlign.Center
-                            ),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            cursorBrush = SolidColor(LightningOrange),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            decorationBox = { inner ->
-                                Box(contentAlignment = Alignment.Center) {
-                                    if (customAmount.isEmpty()) {
-                                        Text(
-                                            text = "0",
-                                            style = MaterialTheme.typography.displaySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = LightningOrange.copy(alpha = 0.3f)
-                                        )
-                                    }
-                                    inner()
-                                }
-                            }
-                        )
-                        if (!fiatMode) {
-                            Text(
-                                text = stringResource(R.string.zap_sats),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = LightningOrange.copy(alpha = 0.7f)
-                            )
-                        }
-                    } else if (effectiveAmount > 0) {
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = AmountFormatter.formatShort(effectiveAmount, context),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = LightningOrange,
-                            modifier = Modifier
-                                .clickable {
-                                    customAmount = effectiveAmount.toString()
-                                    isCustom = true
-                                }
-                                .padding(vertical = 4.dp)
+                            recipientProfile.displayString,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
                         )
-                        if (!fiatMode) {
+                        if (!recipientProfile.lud16.isNullOrBlank()) {
                             Text(
-                                text = stringResource(R.string.zap_sats),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = LightningOrange.copy(alpha = 0.7f)
+                                recipientProfile.lud16,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
                             )
                         }
                     }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // Preset chips header
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.zap_quick_amounts),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row {
-                            if (editMode) {
-                                TextButton(onClick = { editMode = false }) {
-                                    Text(stringResource(R.string.btn_done), color = LightningOrange, fontSize = 12.sp)
-                                }
-                            } else {
-                                IconButton(
-                                    onClick = { editMode = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Text(
-                                        stringResource(R.string.btn_edit),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    // Preset amount chips
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        presets.forEach { preset ->
-                            ZapPresetChip(
-                                preset = preset,
-                                isSelected = !isCustom && selectedPreset == preset,
-                                editMode = editMode,
-                                onClick = {
-                                    if (!editMode) {
-                                        selectedPreset = preset
-                                        isCustom = false
-                                        message = preset.message
-                                    }
-                                },
-                                onRemove = {
-                                    presets = ZapPreferences(context).removePreset(preset)
-                                    if (selectedPreset == preset) {
-                                        selectedPreset = presets.firstOrNull()
-                                    }
-                                }
-                            )
-                        }
-
-                        // Custom amount chip
-                        ZapChipButton(
-                            label = stringResource(R.string.btn_custom),
-                            isSelected = isCustom,
-                            onClick = { isCustom = true }
-                        )
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // Custom amount input
-                    AnimatedVisibility(
-                        visible = isCustom,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        Column {
-                            OutlinedTextField(
-                                value = customAmount,
-                                onValueChange = { customAmount = it.filter { c -> c.isDigit() } },
-                                label = { Text(stringResource(R.string.placeholder_amount_sats)) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                shape = RoundedCornerShape(16.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = LightningOrange,
-                                    focusedLabelColor = LightningOrange,
-                                    cursorColor = LightningOrange
-                                )
-                            )
-                            val saveAmount = customAmount.toLongOrNull() ?: 0L
-                            if (saveAmount > 0) {
-                                Spacer(Modifier.height(6.dp))
-                                TextButton(
-                                    onClick = {
-                                        val preset = ZapPreset(saveAmount, message.trim())
-                                        presets = ZapPreferences(context).addPreset(preset)
-                                        selectedPreset = presets.firstOrNull { it.amountSats == saveAmount }
-                                        isCustom = false
-                                        customAmount = ""
-                                    }
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Add,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(stringResource(R.string.btn_save))
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
-                    }
-
-                    // Message input
-                    OutlinedTextField(
-                        value = message,
-                        onValueChange = { message = it },
-                        label = { Text(stringResource(R.string.placeholder_message_optional)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LightningOrange,
-                            focusedLabelColor = LightningOrange,
-                            cursorColor = LightningOrange
-                        )
-                    )
-
-                    // Clear message when switching away from a preset with a saved message
-                    // (message is pre-filled when selecting a preset with a message)
-
-                    Spacer(Modifier.height(16.dp))
-
-                    if (forcePrivate) {
-                        // Parent is a private reply — zap is locked to DIP-03 mode and the
-                        // anon/private toggles are hidden. A small label keeps the user
-                        // oriented; the lock icon mirrors the orange lock used elsewhere.
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    if (!recipientProfile.lud16.isNullOrBlank()) {
+                        IconButton(onClick = {
+                            clipboard.setText(AnnotatedString(recipientProfile.lud16!!))
+                        }) {
                             Icon(
-                                imageVector = Icons.Outlined.VisibilityOff,
-                                contentDescription = null,
-                                tint = LightningOrange,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = stringResource(R.string.zap_private_locked_for_private_reply),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                            )
-                        }
-                    } else {
-                    // Anonymous toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.btn_anonymous),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Switch(
-                            checked = isAnonymous,
-                            onCheckedChange = {
-                                isAnonymous = it
-                                if (it) isPrivate = false
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = LightningOrange,
-                                checkedTrackColor = LightningOrange.copy(alpha = 0.5f),
-                                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                uncheckedBorderColor = MaterialTheme.colorScheme.outline
-                            )
-                        )
-                    }
-
-                    // Private toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = stringResource(R.string.btn_private),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (canPrivateZap) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                            )
-                            if (!canPrivateZap) {
-                                Text(
-                                    text = stringResource(R.string.zap_both_parties_need_dm_relays),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                        Switch(
-                            checked = isPrivate,
-                            onCheckedChange = {
-                                isPrivate = it
-                                if (it) isAnonymous = false
-                            },
-                            enabled = canPrivateZap,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = LightningOrange,
-                                checkedTrackColor = LightningOrange.copy(alpha = 0.5f),
-                                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                uncheckedBorderColor = MaterialTheme.colorScheme.outline
-                            )
-                        )
-                    }
-                    } // end !forcePrivate
-
-                    // NIP-A3 payment targets
-                    if (paymentTargets.isNotEmpty()) {
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(R.string.zap_other_ways_to_pay),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            paymentTargets.forEach { target ->
-                                PaymentTargetChip(target) { selectedTarget = target }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // Action buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        TextButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(stringResource(R.string.btn_cancel))
-                        }
-
-                        Button(
-                            onClick = {
-                                onZap(effectiveAmount * 1000, effectiveMessage.ifEmpty { message }, isAnonymous, isPrivate)
-                            },
-                            enabled = effectiveAmount > 0,
-                            modifier = Modifier.weight(2f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = LightningOrange,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_bolt),
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                if (fiatMode) {
-                                    stringResource(
-                                        R.string.zap_x_amount,
-                                        AmountFormatter.formatShort(effectiveAmount, context)
-                                    )
-                                } else {
-                                    stringResource(R.string.zap_x_sats, effectiveAmount)
-                                },
-                                fontWeight = FontWeight.Bold
+                                Icons.Filled.ContentCopy,
+                                contentDescription = "Copy lightning address",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
                 }
             }
+
+            // ── 3. Hero amount ──────────────────────────────────────
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val heroText = if (fiatMode && effectiveAmount > 0) {
+                    AmountFormatter.formatShort(effectiveAmount, context)
+                } else {
+                    "%,d".format(effectiveAmount)
+                }
+                Text(
+                    heroText,
+                    color = accent,
+                    fontSize = 56.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    if (fiatMode) ExchangeRateRepository.currencyFor(fiatCurrency).code else "sats",
+                    color = accent.copy(alpha = 0.75f),
+                    style = MaterialTheme.typography.titleSmall
+                )
+            }
+
+            // ── 4. Preset strip ─────────────────────────────────────
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets.forEach { preset ->
+                    val selected = !isCustom && selectedPreset?.amountSats == preset.amountSats
+                    PresetPill(
+                        label = AmountFormatter.formatShort(preset.amountSats, context),
+                        selected = selected,
+                        accent = accent,
+                        onClick = {
+                            selectedPreset = preset
+                            isCustom = false
+                            // Auto-fill the preset's optional default
+                            // message only when the message field is
+                            // currently empty (don't clobber typing).
+                            if (preset.message.isNotEmpty() && message.isBlank()) {
+                                message = preset.message
+                            }
+                        }
+
+                    )
+                }
+                CustomPlusPill(
+                    label = if (isCustom && effectiveAmount > 0)
+                        AmountFormatter.formatShort(effectiveAmount, context)
+                    else "Custom",
+                    selected = isCustom,
+                    accent = accent,
+                    showPlus = canSavePreset,
+                    onClick = {
+                        isCustom = true
+                        if (effectiveAmount == 0L) {
+                            customAmountTfv = TextFieldValue("")
+                        } else {
+                            // Re-seed and select-all so first keystroke replaces.
+                            seedCustomAmount(customAmount) { customAmountTfv = it }
+                        }
+                        runCatching { amountFocusRequester.requestFocus() }
+                    },
+                    onPlusClick = {
+                        // Save the current custom amount as a new preset
+                        if (canSavePreset) {
+                            presets = zapPrefsRepo.addPreset(
+                                ZapPreset(effectiveAmount, message.trim())
+                            ).sortedBy { it.amountSats }
+                        }
+                    }
+                )
+            }
+
+            // ── 5. Inline custom amount field ───────────────────────
+            // Always rendered (the keyboard is up on mount per iOS),
+            // but only contributes to the amount when isCustom = true.
+            // The seed is pre-selected so the first keystroke replaces
+            // it; preset taps switch isCustom off and the typed value
+            // is preserved if the user comes back.
+            OutlinedTextField(
+                value = customAmountTfv,
+                onValueChange = { newTfv ->
+                    val filtered = newTfv.text.filter { it.isDigit() }
+                    // Preserve cursor / selection across the digit filter.
+                    customAmountTfv = newTfv.copy(text = filtered)
+                    if (filtered.isNotEmpty()) isCustom = true
+                },
+                label = {
+                    Text(if (fiatMode) "Custom (cents)" else "Custom (sats)")
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(amountFocusRequester)
+            )
+
+            // ── 6. Message ──────────────────────────────────────────
+            OutlinedTextField(
+                value = message,
+                onValueChange = { message = it },
+                placeholder = { Text("Message (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // ── 7. Privacy dropdown ─────────────────────────────────
+            if (!forcePrivate) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { privacyMenuExpanded = true },
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val (icon, label, helper) = when {
+                                isPrivate -> Triple(Icons.Filled.Lock, "Private", "Recipient only — sent via DM-relay route.")
+                                isAnonymous -> Triple(Icons.Outlined.VisibilityOff, "Anonymous", "Recipient won't see your identity.")
+                                else -> Triple(Icons.Outlined.Visibility, "Public", null)
+                            }
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(label, style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface)
+                                if (helper != null) {
+                                    Text(
+                                        helper,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.Filled.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = privacyMenuExpanded,
+                        onDismissRequest = { privacyMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Public") },
+                            leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
+                            onClick = {
+                                isPrivate = false
+                                isAnonymous = false
+                                privacyMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Anonymous") },
+                            leadingIcon = { Icon(Icons.Outlined.VisibilityOff, null) },
+                            onClick = {
+                                isAnonymous = true
+                                isPrivate = false
+                                privacyMenuExpanded = false
+                            }
+                        )
+                        if (canPrivateZap) {
+                            DropdownMenuItem(
+                                text = { Text("Private") },
+                                leadingIcon = { Icon(Icons.Filled.Lock, null) },
+                                onClick = {
+                                    isPrivate = true
+                                    isAnonymous = false
+                                    privacyMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── 8. Instant zaps toggle ──────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_bolt),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (fiatMode) "Instant payments" else "Instant zaps",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Switch(
+                        checked = instantZapsEnabled,
+                        onCheckedChange = {
+                            instantZapsEnabled = it
+                            interfacePrefs.setQuickZapEnabled(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accent,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surface
+                        )
+                    )
+                }
+            }
+
+            // NIP-A3 payment targets
+            if (paymentTargets.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.zap_other_ways_to_pay),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    paymentTargets.forEach { target ->
+                        PaymentTargetChip(target) { selectedTarget = target }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            } // end scrollable content Column
+
+            // ── 9. Zap button — pinned to the bottom of the sheet ──
+            // Lives outside the scrollable region above so it stays on
+            // screen even when the keyboard is up. The outer Column's
+            // imePadding() ensures it floats above the IME.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 12.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (overHardCap) {
+                    Text(
+                        "Max ${"%,d".format(ZAP_HARD_CAP_SATS)} sats per zap",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (effectiveAmount > ZAP_SOFT_CONFIRM_SATS) {
+                            showLargeAmountConfirm = true
+                        } else {
+                            onZap(effectiveAmount * 1000, effectiveMessage.ifEmpty { message }, isAnonymous, isPrivate)
+                        }
+                    },
+                    enabled = effectiveAmount > 0 && !overHardCap,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accent,
+                        contentColor = Color.White,
+                        disabledContainerColor = accent.copy(alpha = 0.35f)
+                    )
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            if (fiatMode) R.drawable.ic_coin_stack else R.drawable.ic_bolt
+                        ),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (fiatMode) "Zap ${AmountFormatter.formatShort(effectiveAmount, context)}"
+                        else "Zap ${"%,d".format(effectiveAmount)} sats",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                }
+            }
         }
     }
 
+    // 10K-sat soft-confirmation dialog. Large zaps surface a "double-check
+    // before sending" prompt so a stray preset tap doesn't drain a wallet.
+    if (showLargeAmountConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLargeAmountConfirm = false },
+            title = { Text("Zap %,d sats?".format(effectiveAmount)) },
+            text = { Text("This is a large amount, double-check before sending.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLargeAmountConfirm = false
+                        onZap(effectiveAmount * 1000, effectiveMessage.ifEmpty { message }, isAnonymous, isPrivate)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accent)
+                ) { Text("Send", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLargeAmountConfirm = false }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        )
+    }
+
+    if (showSavePresetDialog) {
+        SaveZapPresetDialog(
+            currentAmount = if (effectiveAmount > 0) effectiveAmount.toString() else "",
+            onSave = { preset ->
+                presets = zapPrefsRepo.addPreset(preset).sortedBy { it.amountSats }
+                selectedPreset = preset
+                isCustom = false
+                showSavePresetDialog = false
+            },
+            onDismiss = { showSavePresetDialog = false }
+        )
+    }
 }
 
 /**
@@ -683,315 +782,205 @@ private fun PaymentTargetChip(target: NipA3.PaymentTarget, onClick: () -> Unit) 
         NipA3.symbol(target.type)?.let { append(it).append(' ') }
         append(NipA3.displayName(target.type))
     }
-    ZapChipButton(
+    PresetPill(
         label = label,
-        isSelected = false,
+        selected = false,
+        accent = WispThemeColors.zapColor,
         onClick = onClick
     )
 }
 
-@Composable
-private fun AnimatedBoltHeader() {
-    val infiniteTransition = rememberInfiniteTransition(label = "bolt")
+/**
+ * Register-style sanitiser: digits only. The fiat-mode amount field is
+ * interpreted as integer cents (last two digits = cents place), so
+ * decimal points and other punctuation in user input are stripped — the
+ * decimal in the displayed string ("$0.21") is presentation-only.
+ */
+private fun sanitizeFiatInput(text: String): String =
+    text.filter { it.isDigit() }
 
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
-    )
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
-    val boltScale by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "boltScale"
-    )
+private const val ZAP_SOFT_CONFIRM_SATS = 10_000L
+private const val ZAP_HARD_CAP_SATS = 1_000_000L
 
-    val zapColor = WispThemeColors.zapColor
-
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.size(64.dp)
-    ) {
-        // Glow circle behind bolt
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .alpha(glowAlpha)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            zapColor.copy(alpha = 0.4f),
-                            zapColor.copy(alpha = 0.1f),
-                            Color.Transparent
-                        )
-                    ),
-                    shape = CircleShape
-                )
-        )
-
-        // Bolt icon
-        Icon(
-            painter = painterResource(R.drawable.ic_bolt),
-            contentDescription = null,
-            tint = zapColor,
-            modifier = Modifier
-                .size(30.dp)
-                .scale(boltScale)
-        )
-    }
+/**
+ * Seed the custom-amount field with the given text AND select the
+ * whole range — so the next keystroke replaces the seed entirely.
+ * Lets the user open the sheet, see the configured instant-zap
+ * amount, then type a new value over it without backspacing first.
+ */
+private fun seedCustomAmount(text: String, set: (TextFieldValue) -> Unit) {
+    set(TextFieldValue(text = text, selection = TextRange(0, text.length)))
 }
 
+/**
+ * Pill-shaped text button — used for the toolbar's Close + Presets
+ * actions. Border-only by default, fillable via `borderColor`.
+ */
 @Composable
-private fun LightningBackground(modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "lightning_bg")
-
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase"
-    )
-
-    val zapColor = WispThemeColors.zapColor
-
-    // Stable random values for bolt positions
-    val boltData = remember {
-        List(5) { i ->
-            Triple(
-                Random(i * 42).nextFloat(),       // x position (0..1)
-                Random(i * 42 + 1).nextFloat(),    // y position (0..1)
-                Random(i * 42 + 2).nextFloat() * 0.3f + 0.1f  // size scale
-            )
-        }
-    }
-
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        // Subtle gradient overlay at the top
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    zapColor.copy(alpha = 0.03f),
-                    Color.Transparent
-                ),
-                startY = 0f,
-                endY = h * 0.4f
-            )
-        )
-
-        // Animated mini lightning bolts scattered in background
-        boltData.forEach { (xFrac, yFrac, scale) ->
-            val animatedAlpha = (sin((phase + xFrac) * Math.PI * 2).toFloat() * 0.5f + 0.5f) * 0.06f
-            val cx = xFrac * w
-            val cy = yFrac * h
-            val boltSize = 20f * scale
-
-            drawMiniBolt(
-                center = Offset(cx, cy),
-                size = boltSize,
-                color = zapColor.copy(alpha = animatedAlpha)
-            )
-        }
-    }
-}
-
-private fun DrawScope.drawMiniBolt(center: Offset, size: Float, color: Color) {
-    val path = Path().apply {
-        moveTo(center.x, center.y - size)
-        lineTo(center.x - size * 0.4f, center.y + size * 0.1f)
-        lineTo(center.x + size * 0.1f, center.y + size * 0.1f)
-        lineTo(center.x - size * 0.1f, center.y + size)
-        lineTo(center.x + size * 0.4f, center.y - size * 0.1f)
-        lineTo(center.x - size * 0.1f, center.y - size * 0.1f)
-        close()
-    }
-    drawPath(path, color, style = Fill)
-}
-
-@Composable
-private fun ZapPresetChip(
-    preset: ZapPreset,
-    isSelected: Boolean,
-    editMode: Boolean,
+private fun PillButton(
+    text: String,
     onClick: () -> Unit,
-    onRemove: () -> Unit
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    borderColor: Color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.05f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "chipScale"
-    )
-
-    Box {
-        Surface(
-            modifier = Modifier
-                .scale(scale)
-                .clip(RoundedCornerShape(16.dp))
-                .clickable(onClick = onClick),
-            shape = RoundedCornerShape(16.dp),
-            color = if (isSelected) LightningOrange else MaterialTheme.colorScheme.surfaceVariant,
-            border = if (isSelected) {
-                androidx.compose.foundation.BorderStroke(
-                    1.5.dp,
-                    Brush.linearGradient(listOf(LightningYellow, LightningOrange))
-                )
-            } else {
-                null
-            },
-            shadowElevation = if (isSelected) 4.dp else 0.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isSelected) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_bolt),
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = Color.White
-                    )
-                    Spacer(Modifier.width(3.dp))
-                }
-                val chipContext = LocalContext.current
-                Text(
-                    text = AmountFormatter.formatShort(preset.amountSats, chipContext),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (preset.message.isNotEmpty()) {
-                    Spacer(Modifier.width(4.dp))
-                    Icon(
-                        Icons.AutoMirrored.Outlined.Message,
-                        contentDescription = null,
-                        modifier = Modifier.size(10.dp),
-                        tint = if (isSelected) Color.White.copy(alpha = 0.7f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                }
-            }
-        }
-
-        // Remove badge in edit mode
-        if (editMode) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 4.dp, y = (-4).dp)
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onRemove),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.error
-            ) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.btn_remove),
-                    modifier = Modifier
-                        .padding(2.dp)
-                        .size(16.dp),
-                    tint = Color.White
-                )
-            }
-        }
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = CircleShape,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = contentColor,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+        )
     }
 }
 
+/** Single preset chip in the FlowRow. Selected = filled accent + white. */
 @Composable
-private fun ZapChipButton(
+private fun PresetPill(
     label: String,
-    isSelected: Boolean,
+    selected: Boolean,
+    accent: Color,
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) LightningOrange else MaterialTheme.colorScheme.surfaceVariant,
-        border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(
-                1.5.dp,
-                Brush.linearGradient(listOf(LightningYellow, LightningOrange))
-            )
-        } else {
-            null
-        }
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = CircleShape,
+        color = if (selected) accent else MaterialTheme.colorScheme.surfaceVariant
     ) {
         Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            label,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
         )
     }
 }
 
+/** Custom-amount chip. When selected AND not yet in the preset list,
+ *  the trailing + badge becomes tappable to save the value as a preset. */
+@Composable
+private fun CustomPlusPill(
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    showPlus: Boolean,
+    onClick: () -> Unit,
+    onPlusClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = CircleShape,
+        color = if (selected) accent else MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 18.dp, end = if (showPlus) 4.dp else 18.dp, top = 4.dp, bottom = 4.dp)
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+            )
+            if (showPlus) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f))
+                        .clickable(onClick = onPlusClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "Save as preset",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Translate raw Lightning/SDK error strings into plain user-facing
+ * copy. Mirrors iOS `ZapAnimationStore.friendlyMessage(for:)`.
+ * Fallback: extract the substring between the first `("` and `")`
+ * (Swift enum description wrapper) if present; otherwise pass through
+ * the raw error.
+ */
+internal fun friendlyZapErrorMessage(raw: String?): String {
+    val msg = raw?.trim().orEmpty()
+    if (msg.isEmpty()) return "Zap failed."
+    val lower = msg.lowercase()
+    return when {
+        "insufficient funds" in lower || "insufficient balance" in lower ->
+            "Not enough sats in your wallet."
+        "no route" in lower || "route not found" in lower || "unreachable" in lower ->
+            "Couldn't find a payment route to the recipient. Try again later."
+        "expired" in lower || "invoice has expired" in lower ->
+            "The lightning invoice expired before it could be paid. Try again."
+        "timeout" in lower || "timed out" in lower ->
+            "The payment timed out. Check your connection and try again."
+        "no lud16" in lower || "no lightning address" in lower ->
+            "This account doesn't have a lightning address."
+        "lnurl" in lower && "400" in lower ->
+            "The recipient's lightning provider rejected this zap. Try a different amount."
+        "amount too small" in lower || "below minimum" in lower ->
+            "Amount is below the recipient's minimum. Try a larger zap."
+        "amount too large" in lower || "above maximum" in lower ->
+            "Amount is above the recipient's maximum. Try a smaller zap."
+        else -> {
+            val start = msg.indexOf("(\"")
+            val end = msg.indexOf("\")", startIndex = (start + 2).coerceAtLeast(0))
+            if (start >= 0 && end > start + 2) msg.substring(start + 2, end) else msg
+        }
+    }
+}
+
+/**
+ * Simple "save as preset" dialog used by the Presets pill in the
+ * toolbar. The composer's inline + badge on the Custom chip handles
+ * the single-tap save flow; this dialog is for adding/editing presets
+ * with an explicit message.
+ */
 @Composable
 private fun SaveZapPresetDialog(
+    currentAmount: String,
     onSave: (ZapPreset) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var amount by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf(currentAmount) }
     var presetMessage by remember { mutableStateOf("") }
-
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_bolt),
-                    contentDescription = null,
-                    tint = LightningOrange,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.btn_save))
-            }
-        },
+        title = { Text("Save preset") },
         text = {
             Column {
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it.filter { c -> c.isDigit() } },
-                    label = { Text(stringResource(R.string.placeholder_amount_sats)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Amount (sats)") },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = LightningOrange,
-                        focusedLabelColor = LightningOrange,
-                        cursorColor = LightningOrange
-                    )
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = presetMessage,
-                    onValueChange = { presetMessage = it },
-                    label = { Text(stringResource(R.string.placeholder_message_optional)) },
-                    modifier = Modifier.fillMaxWidth(),
+                    onValueChange = { presetMessage = it.replace(",", "").replace(":", "") },
+                    label = { Text("Message (optional)") },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = LightningOrange,
-                        focusedLabelColor = LightningOrange,
-                        cursorColor = LightningOrange
-                    )
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },
@@ -1002,7 +991,7 @@ private fun SaveZapPresetDialog(
                     onSave(ZapPreset(sats, presetMessage.trim()))
                 },
                 enabled = (amount.toLongOrNull() ?: 0L) > 0,
-                colors = ButtonDefaults.buttonColors(containerColor = LightningOrange)
+                colors = ButtonDefaults.buttonColors(containerColor = WispThemeColors.zapColor)
             ) {
                 Text(stringResource(R.string.btn_save), fontWeight = FontWeight.Bold)
             }
@@ -1012,4 +1001,3 @@ private fun SaveZapPresetDialog(
         }
     )
 }
-

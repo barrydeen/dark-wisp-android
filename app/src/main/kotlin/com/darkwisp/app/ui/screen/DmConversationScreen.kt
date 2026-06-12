@@ -638,7 +638,8 @@ fun DmConversationScreen(
             recipientPubkey = zapTargetMessage?.senderPubkey,
             recipientHasLud16 = zapTargetMessage?.senderPubkey
                 ?.let { pk -> eventRepo?.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() } } ?: true,
-            fetchPaymentTargets = fetchPaymentTargets
+            fetchPaymentTargets = fetchPaymentTargets,
+            profileLookup = { pk -> peerProfile?.takeIf { it.pubkey == pk } }
         )
     }
 }

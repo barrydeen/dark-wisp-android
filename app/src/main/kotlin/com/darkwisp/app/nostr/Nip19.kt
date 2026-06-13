@@ -283,3 +283,5 @@ object Nip19 {
         return IntArray(6) { i -> (polymod shr (5 * (5 - i))) and 31 }
     }
 }
+
+fun String.toNpub(): String = Nip19.npubEncode(hexToByteArray())

@@ -9,6 +9,10 @@ import com.darkwisp.app.nostr.LocalSigner
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip78
 import com.darkwisp.app.nostr.NipA3
+import com.darkwisp.app.nostr.Noffer
+import com.darkwisp.app.nostr.NofferData
+import com.darkwisp.app.nostr.NofferException
+import com.darkwisp.app.nostr.NofferPricing
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.RemoteSigner
@@ -21,6 +25,7 @@ import com.darkwisp.app.repo.SigningMode
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.BalanceUnit
+import com.darkwisp.app.repo.NofferClient
 import com.darkwisp.app.repo.NwcRepository
 import com.darkwisp.app.repo.SparkRepository
 import com.darkwisp.app.repo.WalletMode
@@ -86,6 +91,13 @@ sealed class AutoCheckState {
     object NotFound : AutoCheckState()
 }
 
+sealed class NwcRestoreState {
+    object Idle : NwcRestoreState()
+    object Searching : NwcRestoreState()
+    data class Found(val uri: String, val createdAt: Long) : NwcRestoreState()
+    object NotFound : NwcRestoreState()
+}
+
 sealed class FeeState {
     object Idle : FeeState()
     object Loading : FeeState()
@@ -98,6 +110,7 @@ sealed class WalletPage {
     object ModeSelection : WalletPage()
     object NwcSetup : WalletPage()
     object SparkSetup : WalletPage()
+    object SparkRestoreSeed : WalletPage()
     data class SparkBackup(val mnemonic: String) : WalletPage()
     object SendInput : WalletPage()
     object ScanQR : WalletPage()
@@ -222,6 +235,16 @@ class WalletViewModel(
     private val _lightningAddressError = MutableStateFlow<String?>(null)
     val lightningAddressError: StateFlow<String?> = _lightningAddressError
 
+    // NWC node info (alias + supported methods) — fetched once post-connect.
+    val nwcNodeAlias: StateFlow<String?> = nwcRepo.nodeAlias
+    val nwcSupportedMethods: StateFlow<List<String>> = nwcRepo.supportedMethods
+
+    // Spark identity pubkey — populated from the SDK's GetInfoResponse.
+    val sparkIdentityPubkey: StateFlow<String?> = sparkRepo.identityPubkey
+
+    // NWC connection metadata for the Wallet Info expandable in settings.
+    val nwcConnectionInfo: StateFlow<NwcRepository.ConnectionInfo?> = nwcRepo.connectionInfo
+
     // Delete wallet confirmation
     private val _deleteConfirmText = MutableStateFlow("")
     val deleteConfirmText: StateFlow<String> = _deleteConfirmText
@@ -252,6 +275,11 @@ class WalletViewModel(
     private val _autoCheckState = MutableStateFlow<AutoCheckState>(AutoCheckState.Idle)
     val autoCheckState: StateFlow<AutoCheckState> = _autoCheckState
 
+    // NWC connection-string restore from NIP-78 backup (per NWC_BACKUP_PARITY.md)
+    private val _nwcRestoreState = MutableStateFlow<NwcRestoreState>(NwcRestoreState.Idle)
+    val nwcRestoreState: StateFlow<NwcRestoreState> = _nwcRestoreState
+    private var nwcRestoreJob: Job? = null
+
     // Per-relay backup status
     private val _relayBackupStatuses = MutableStateFlow<List<RelayBackupInfo>>(emptyList())
     val relayBackupStatuses: StateFlow<List<RelayBackupInfo>> = _relayBackupStatuses
@@ -266,6 +294,39 @@ class WalletViewModel(
     // True when relay backup check completed and no relays have the backup
     private val _backupMissing = MutableStateFlow(false)
     val backupMissing: StateFlow<Boolean> = _backupMissing
+
+    /**
+     * Wipe per-wallet display state so swapping wallets (Spark mnemonic
+     * restored from backup, default-wallet generation, paste a new
+     * mnemonic, disconnect, delete) doesn't carry the previous wallet's
+     * transactions / pagination / lightning address into the new
+     * wallet's UI. Mirrors iOS `WalletStore.clearDisplayState`.
+     *
+     * The repo-side `_balance` flow is cleared inside `clearMnemonic` /
+     * by the new wallet's first balance fetch — only ViewModel-side
+     * display state needs explicit clearing here.
+     */
+    private fun clearWalletDisplayState() {
+        _transactions.value = emptyList()
+        _transactionsError.value = null
+        _hasMoreTransactions.value = true
+        _lightningAddress.value = null
+        _lightningAddressError.value = null
+        _lightningAddressLoading.value = false
+        // Reset the seed-backup ack flag — sparkRepo.saveMnemonic clears
+        // the underlying prefs key, but the ViewModel-side StateFlow
+        // would otherwise stay at the prior wallet's acknowledged value
+        // until the next refreshState() call.
+        _seedBackupAcked.value = false
+    }
+
+    /**
+     * Set after [deleteWallet] so a subsequent [navigateHome] doesn't
+     * immediately re-derive the default wallet — the user explicitly
+     * disconnected to pick a different one. Persisted in
+     * [WalletModeRepository] so the choice survives app restarts.
+     */
+    private var skipAutoCreate: Boolean = walletModeRepo.isAutoCreateSkipped()
 
     private val _registeredAddress = MutableStateFlow<String?>(null)
 
@@ -283,6 +344,7 @@ class WalletViewModel(
         relayPool.registerDedupBypass("auto-check-")
         relayPool.registerDedupBypass("wallet-backup-")
         relayPool.registerDedupBypass("delete-backup-")
+        relayPool.registerDedupBypass("nwc-restore-")
 
         val mode = walletModeRepo.getMode()
         when (mode) {
@@ -451,8 +513,12 @@ class WalletViewModel(
     fun navigateTo(page: WalletPage) {
         pageStack.add(page)
         _currentPage.value = page
-        // Auto-check relay backup statuses when entering Settings
-        if (page is WalletPage.Settings && _walletMode.value == WalletMode.SPARK && keyRepo.isLoggedIn()) {
+        // Auto-check relay backup statuses when entering Settings.
+        // Default wallets re-derive from the nsec so they don't use relay backup.
+        if (page is WalletPage.Settings
+            && _walletMode.value == WalletMode.SPARK
+            && keyRepo.isLoggedIn()
+        ) {
             checkRelayBackupStatuses()
         }
     }
@@ -486,14 +552,11 @@ class WalletViewModel(
 
     fun selectNwcMode() {
         navigateTo(WalletPage.NwcSetup)
+        searchNwcBackup()
     }
 
     fun selectSparkMode() {
         navigateTo(WalletPage.SparkSetup)
-        // Auto-check relays for existing backup if logged in
-        if (keyRepo.isLoggedIn()) {
-            autoCheckRelayBackup()
-        }
     }
 
     private fun autoCheckRelayBackup() {
@@ -633,6 +696,114 @@ class WalletViewModel(
         _autoCheckState.value = AutoCheckState.Idle
     }
 
+    // --- NWC backup (NIP-78 kind 30078, d=nwc-wallet-backup) ---
+    //
+    // Cross-platform with iOS per `NWC_BACKUP_PARITY.md`. Publish on every
+    // successful connect (best-effort); search on NWC setup screen open and
+    // surface a "Restore previous wallet" affordance when found.
+
+    private fun searchNwcBackup() {
+        val signer = buildSigner() ?: run {
+            _nwcRestoreState.value = NwcRestoreState.NotFound
+            return
+        }
+        // Don't re-search while one is in flight or already has a result the
+        // user hasn't dismissed yet.
+        if (_nwcRestoreState.value is NwcRestoreState.Searching) return
+        nwcRestoreJob?.cancel()
+        _nwcRestoreState.value = NwcRestoreState.Searching
+        nwcRestoreJob = viewModelScope.launch {
+            try {
+                relayPool.ensureWriteRelaysConnected()
+                val pubkey = signer.pubkeyHex
+                val subId = "nwc-restore-${System.currentTimeMillis()}"
+                val filter = Nip78.nwcBackupFilter(pubkey)
+                val seenIds = mutableSetOf<String>()
+                val events = mutableListOf<NostrEvent>()
+                var eoseCount = 0
+                val collectJob = launch {
+                    relayPool.relayEvents.collect { relayEvent: RelayEvent ->
+                        if (relayEvent.subscriptionId == subId && seenIds.add(relayEvent.event.id)) {
+                            events.add(relayEvent.event)
+                        }
+                    }
+                }
+                val eoseJob = launch {
+                    relayPool.eoseSignals.collect { id ->
+                        if (id == subId) eoseCount++
+                    }
+                }
+                yield()
+                val allCount = relayPool.getRelayUrls().size
+                val minEose = (allCount * 2 + 2) / 3
+                relayPool.sendToAll(ClientMessage.req(subId, filter))
+                withTimeoutOrNull(10_000) {
+                    while (eoseCount < allCount) {
+                        delay(200)
+                        if (eoseCount >= minEose && events.isNotEmpty()) break
+                    }
+                }
+                collectJob.cancel()
+                eoseJob.cancel()
+                relayPool.closeOnAllRelays(subId)
+
+                val newest = events
+                    .filter { !it.content.isBlank() }
+                    .maxByOrNull { it.created_at }
+                if (newest == null) {
+                    _nwcRestoreState.value = NwcRestoreState.NotFound
+                    return@launch
+                }
+                val uri = withContext(Dispatchers.Default) {
+                    Nip78.decryptNwcBackup(signer, newest)
+                }
+                if (uri.isNullOrBlank()) {
+                    _nwcRestoreState.value = NwcRestoreState.NotFound
+                } else {
+                    // Don't offer to restore if it's already the active connection.
+                    val active = nwcRepo.getConnectionString()
+                    if (active != null && active.trim() == uri.trim()) {
+                        _nwcRestoreState.value = NwcRestoreState.NotFound
+                    } else {
+                        _nwcRestoreState.value = NwcRestoreState.Found(uri, newest.created_at)
+                    }
+                }
+            } catch (_: Exception) {
+                _nwcRestoreState.value = NwcRestoreState.NotFound
+            }
+        }
+    }
+
+    fun restoreFromNwcBackup() {
+        val state = _nwcRestoreState.value
+        if (state is NwcRestoreState.Found) {
+            _nwcRestoreState.value = NwcRestoreState.Idle
+            _connectionString.value = state.uri
+            connectNwcWallet(state.uri)
+        }
+    }
+
+    fun dismissNwcRestore() {
+        nwcRestoreJob?.cancel()
+        _nwcRestoreState.value = NwcRestoreState.Idle
+    }
+
+    private suspend fun publishNwcBackup(uri: String) {
+        val signer = buildSigner() ?: return
+        val trimmed = uri.trim()
+        if (trimmed.isEmpty()) return
+        try {
+            relayPool.ensureWriteRelaysConnected()
+            val event = withContext(Dispatchers.Default) {
+                Nip78.createNwcBackupEvent(signer, trimmed)
+            }
+            val sent = relayPool.sendToWriteRelays(ClientMessage.event(event))
+            Log.d("NwcBackup", "publish: sent to $sent relays")
+        } catch (e: Exception) {
+            Log.d("NwcBackup", "publish failed (non-fatal): ${e.message}")
+        }
+    }
+
     // --- NWC Connection ---
 
     fun updateConnectionString(value: String) {
@@ -651,6 +822,8 @@ class WalletViewModel(
 
         walletModeRepo.setMode(WalletMode.NWC)
         _walletMode.value = WalletMode.NWC
+        skipAutoCreate = false
+        walletModeRepo.setAutoCreateSkipped(false)
 
         _statusLines.value = emptyList()
         if (!silent) _walletState.value = WalletState.Connecting
@@ -670,8 +843,11 @@ class WalletViewModel(
     // --- Spark Connection ---
 
     fun generateSparkWallet() {
+        clearWalletDisplayState()
         val mnemonic = sparkRepo.newMnemonic()
         sparkRepo.saveMnemonic(mnemonic)
+        skipAutoCreate = false
+        walletModeRepo.setAutoCreateSkipped(false)
         connectSparkWallet()
     }
 
@@ -689,7 +865,10 @@ class WalletViewModel(
             return
         }
         Log.d("WalletBackup", "restoreSparkWallet: saving and connecting")
+        clearWalletDisplayState()
         sparkRepo.saveMnemonic(trimmed)
+        skipAutoCreate = false
+        walletModeRepo.setAutoCreateSkipped(false)
         connectSparkWallet()
     }
 
@@ -766,6 +945,32 @@ class WalletViewModel(
                             _walletState.value = WalletState.Error(e.message ?: "Failed to fetch balance")
                         }
                     )
+                    // Fetch NWC node info (alias / methods) so the dashboard top
+                    // bar and Wallet Info expandable can render it. Spark exposes
+                    // its identity via getInfo() on the SDK side; no extra fetch
+                    // needed there.
+                    if (provider === nwcRepo) {
+                        launch { nwcRepo.fetchNodeInfo() }
+                        // Best-effort cross-device backup of the URI per
+                        // NWC_BACKUP_PARITY.md. Publish each connect so a
+                        // reconnect / wallet swap replaces the prior backup.
+                        val uri = nwcRepo.getConnectionString()
+                        if (!uri.isNullOrBlank()) {
+                            launch { publishNwcBackup(uri) }
+                        }
+                    }
+                    // Once the wallet finishes connecting, leave the setup
+                    // screen and land on Home — otherwise currentPage stays
+                    // at NwcSetup/SparkSetup and the Scaffold's "Wallet"
+                    // TopAppBar keeps showing over the dashboard. Guarded
+                    // to the setup pages so a connect-during-navigation
+                    // doesn't pop the user out of an unrelated sub-page.
+                    val page = _currentPage.value
+                    if (page is WalletPage.NwcSetup || page is WalletPage.SparkSetup) {
+                        pageStack.clear()
+                        pageStack.add(WalletPage.Home)
+                        _currentPage.value = WalletPage.Home
+                    }
                 }
             }
         }
@@ -786,7 +991,9 @@ class WalletViewModel(
     }
 
     fun deleteWallet() {
-        if (_walletMode.value == WalletMode.SPARK && _deleteConfirmText.value != "DELETE") return
+        if (_walletMode.value == WalletMode.SPARK
+            && _deleteConfirmText.value != "DELETE"
+        ) return
 
         connectJob?.cancel()
         statusCollectJob?.cancel()
@@ -809,9 +1016,19 @@ class WalletViewModel(
         _walletState.value = WalletState.NotConnected
         _connectionString.value = ""
         _statusLines.value = emptyList()
-        _lightningAddress.value = null
+        clearWalletDisplayState()
         _deleteConfirmText.value = ""
-        navigateHome()
+
+        // Suppress the auto-create on the next navigateHome — the user
+        // explicitly disconnected to choose a different wallet. They'll land
+        // on the wallet-mode picker (Spark vs NWC), matching iOS. Persist
+        // so the choice survives app restarts.
+        skipAutoCreate = true
+        walletModeRepo.setAutoCreateSkipped(true)
+
+        pageStack.clear()
+        pageStack.add(WalletPage.Home)
+        _currentPage.value = WalletPage.Home
     }
 
     fun disconnectWallet() {
@@ -836,7 +1053,7 @@ class WalletViewModel(
         _walletState.value = WalletState.NotConnected
         _connectionString.value = ""
         _statusLines.value = emptyList()
-        _lightningAddress.value = null
+        clearWalletDisplayState()
         navigateHome()
     }
 
@@ -860,7 +1077,7 @@ class WalletViewModel(
         _walletState.value = WalletState.NotConnected
         _connectionString.value = ""
         _statusLines.value = emptyList()
-        _lightningAddress.value = null
+        clearWalletDisplayState()
     }
 
     fun updateDeleteConfirmText(value: String) {
@@ -869,6 +1086,8 @@ class WalletViewModel(
 
     fun refreshState() {
         _walletMode.value = walletModeRepo.getMode()
+        _seedBackupAcked.value = sparkRepo.isSeedBackupAcknowledged()
+        skipAutoCreate = walletModeRepo.isAutoCreateSkipped()
         val mode = _walletMode.value
         val provider = activeProvider
 
@@ -1048,6 +1267,23 @@ class WalletViewModel(
         _sendError.value = null
 
         when {
+            Noffer.isNofferString(trimmed) -> {
+                val noffer = Noffer.decodeOrNull(trimmed)
+                if (noffer == null) {
+                    _sendError.value = "Invalid CLINK offer"
+                    return
+                }
+                // Resolve the offer service's profile so the send pages and
+                // transaction history can show the payee by name.
+                eventRepo.requestProfileIfMissing(noffer.pubkey)
+                if (noffer.pricing == NofferPricing.FIXED) {
+                    // Amount is baked into the offer — go straight to the invoice.
+                    resolveNofferInvoice(noffer, null)
+                } else {
+                    _sendAmount.value = ""
+                    navigateTo(WalletPage.SendAmount(noffer.raw))
+                }
+            }
             trimmed.lowercase().startsWith("lnbc") -> {
                 val decoded = Bolt11.decode(trimmed)
                 if (decoded == null) {
@@ -1070,12 +1306,23 @@ class WalletViewModel(
                 navigateTo(WalletPage.SendAmount(trimmed))
             }
             else -> {
-                _sendError.value = "Enter a lightning address (user@domain) or BOLT11 invoice"
+                _sendError.value = "Enter a lightning address (user@domain), BOLT11 invoice, or CLINK offer"
             }
         }
     }
 
     fun resolveLightningAddress(address: String, amountSats: Long) {
+        // The SendAmount page is shared between lightning addresses and CLINK
+        // offers — route noffer-shaped input through the kind-21001 RPC.
+        if (Noffer.isNofferString(address)) {
+            val noffer = Noffer.decodeOrNull(address)
+            if (noffer == null) {
+                _sendError.value = "Invalid CLINK offer"
+                return
+            }
+            resolveNofferInvoice(noffer, amountSats)
+            return
+        }
         _isLoading.value = true
         viewModelScope.launch {
             try {
@@ -1109,6 +1356,48 @@ class WalletViewModel(
                 ))
             } catch (e: Exception) {
                 _sendError.value = e.message ?: "Failed to resolve address"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Request a bolt11 invoice for a CLINK offer via the kind-21001 RPC and
+     * move to the confirm page. [amountSats] is null for Fixed offers (the
+     * service knows the price).
+     */
+    private fun resolveNofferInvoice(noffer: NofferData, amountSats: Long?) {
+        _isLoading.value = true
+        viewModelScope.launch {
+            try {
+                val signer = getSigner() ?: buildSigner()
+                if (signer == null) {
+                    _sendError.value = "Sign in with a key that can sign to pay an offer"
+                    return@launch
+                }
+                val invoice = NofferClient.requestInvoice(noffer, signer, amountSats)
+                val decoded = Bolt11.decode(invoice)
+                // Map the payment hash to the offer's service pubkey so the
+                // transaction history resolves the payee's profile, same as zaps.
+                decoded?.paymentHash?.let { ZapSender.persistRecipient(it, noffer.pubkey) }
+                val payeeName = eventRepo.getProfileData(noffer.pubkey)?.displayString
+                navigateTo(WalletPage.SendConfirm(
+                    invoice = invoice,
+                    amountSats = decoded?.amountSats ?: amountSats,
+                    paymentHash = decoded?.paymentHash,
+                    description = decoded?.description?.takeIf { it.isNotBlank() }
+                        ?: payeeName?.let { "CLINK offer to $it" }
+                        ?: "CLINK offer"
+                ))
+            } catch (e: NofferException) {
+                _sendError.value = if (e.code == 5 && e.rangeMin != null && e.rangeMax != null) {
+                    "Amount out of range: ${e.rangeMin}-${e.rangeMax} sats"
+                } else {
+                    e.message ?: "Failed to resolve offer"
+                }
+            } catch (e: Exception) {
+                _sendError.value = e.message ?: "Failed to resolve offer"
             } finally {
                 _isLoading.value = false
             }
@@ -1189,10 +1478,14 @@ class WalletViewModel(
         }
     }
 
-    fun generateInvoice(amountSats: Long) {
+    fun setReceiveAmount(value: String) {
+        _receiveAmount.value = value
+    }
+
+    fun generateInvoice(amountSats: Long, description: String = "") {
         _isLoading.value = true
         viewModelScope.launch {
-            val result = activeProvider.makeInvoice(amountSats * 1000, "")
+            val result = activeProvider.makeInvoice(amountSats * 1000, description)
             result.fold(
                 onSuccess = { invoice ->
                     navigateTo(WalletPage.ReceiveInvoice(invoice, amountSats))
@@ -1227,7 +1520,7 @@ class WalletViewModel(
             }
             mapped.fold(
                 onSuccess = { txs ->
-                    _transactions.value = txs
+                    _transactions.value = dedupTransactions(txs)
                     _hasMoreTransactions.value = txs.size >= 50
                     requestMissingProfiles(txs)
                 },
@@ -1244,12 +1537,28 @@ class WalletViewModel(
                     enrichTransactions(current, zapMaps)
                 }
                 if (reEnriched != current) {
-                    _transactions.value = reEnriched
+                    _transactions.value = dedupTransactions(reEnriched)
                     requestMissingProfiles(reEnriched)
                 }
             }
         }
     }
+
+    /**
+     * Collapse exact backend duplicates and order transactions deterministically.
+     *
+     * A self-send surfaces as two records sharing one payment hash — one
+     * outgoing, one incoming. Both legs must survive (we only drop repeats of
+     * the same (paymentHash, type)), and on a timestamp tie the incoming
+     * "received" leg sorts above its outgoing "sent" leg so the conclusion of
+     * the payment reads on top. Mirrors iOS WalletStore.dedupTransactions.
+     */
+    private fun dedupTransactions(txs: List<WalletTransaction>): List<WalletTransaction> =
+        txs.distinctBy { it.paymentHash to it.type }
+            .sortedWith(
+                compareByDescending<WalletTransaction> { it.settledAt ?: it.createdAt }
+                    .thenBy { if (it.type == "incoming") 0 else 1 }
+            )
 
     private fun enrichTransactions(
         txs: List<WalletTransaction>,
@@ -1303,7 +1612,7 @@ class WalletViewModel(
             }
             mapped.fold(
                 onSuccess = { txs ->
-                    _transactions.value = _transactions.value + txs
+                    _transactions.value = dedupTransactions(_transactions.value + txs)
                     _hasMoreTransactions.value = txs.size >= 50
                     val missing = txs.mapNotNull { it.counterpartyPubkey }
                         .distinct()

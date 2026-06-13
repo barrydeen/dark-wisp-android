@@ -68,6 +68,7 @@ object Keys {
         val sharedPoint = secp256k1.pubKeyTweakMul(pubkeyCompressed, privkey)
         return sharedPoint.copyOfRange(1, 33)
     }
+
 }
 
 /** Zero out sensitive byte arrays to minimize key exposure in memory. */

@@ -159,24 +159,14 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
         _error.value = null
 
         // Use real keypair if available, otherwise generate a throwaway for probing
-        val keypair = keyRepo.getKeypair() ?: Keys.generate()
+        val realKeypair = keyRepo.getKeypair()
+        val keypair = realKeypair ?: Keys.generate()
         val pubHex = keyRepo.getPubkeyHex() ?: keypair.pubkey.toHex()
         keyRepo.reloadPrefs(pubHex)
         blossomRepo.reload(pubHex)
 
         // Reload wallet repos so mnemonic + mode are stored under the correct pubkey prefs
         walletModeRepo?.reload(pubHex)
-
-        // Pre-generate mnemonic (CPU only, no network contention with relay probing)
-        if (sparkRepo != null) {
-            sparkRepo.reload(pubHex)
-            try {
-                val mnemonic = sparkRepo.newMnemonic()
-                sparkRepo.saveMnemonic(mnemonic)
-            } catch (e: Exception) {
-                Log.w(TAG, "Mnemonic generation failed: ${e.message}")
-            }
-        }
 
         viewModelScope.launch {
             val relays = RelayProber.discoverAndSelect(
@@ -273,8 +263,8 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // Backup mnemonic to relays via NIP-78
-            if (sparkRepo != null && lightningAddress != null) {
+            val privkey = keyRepo.getKeypair()?.privkey
+            if (sparkRepo != null && privkey != null) {
                 val mnemonic = sparkRepo.getMnemonic()
                 if (mnemonic != null) {
                     viewModelScope.launch {

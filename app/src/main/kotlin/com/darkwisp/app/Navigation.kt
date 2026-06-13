@@ -97,6 +97,7 @@ import com.darkwisp.app.ui.component.FloatingVideoPlayer
 import com.darkwisp.app.ui.component.PipController
 import com.darkwisp.app.ui.component.FullScreenVideoPlayer
 import com.darkwisp.app.ui.component.FullScreenVideoState
+import com.darkwisp.app.ui.component.NsecPasteWarningOverlay
 import com.darkwisp.app.ui.screen.OnboardingSuggestionsScreen
 import com.darkwisp.app.ui.screen.OnboardingTopicsScreen
 import com.darkwisp.app.ui.screen.OnboardingFirstPostScreen
@@ -1244,6 +1245,7 @@ fun WispNavHost(
             SearchScreen(
                 viewModel = searchViewModel,
                 relayPool = feedViewModel.relayPool,
+                onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                 eventRepo = feedViewModel.eventRepo,
                 muteRepo = feedViewModel.muteRepo,
                 contactRepo = feedViewModel.contactRepo,
@@ -1402,6 +1404,7 @@ fun WispNavHost(
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
+                        onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
                         onRemoveEmojiSet = { pk, dTag -> feedViewModel.removeSetFromEmojiList(pk, dTag) },
                         isEmojiSetAdded = { pk, dTag ->
@@ -1490,6 +1493,7 @@ fun WispNavHost(
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
+                        onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
                         onRemoveEmojiSet = { pk, dTag -> feedViewModel.removeSetFromEmojiList(pk, dTag) },
                         isEmojiSetAdded = { pk, dTag ->
@@ -1728,6 +1732,7 @@ fun WispNavHost(
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
+                        onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
                         onRemoveEmojiSet = { pk, dTag -> feedViewModel.removeSetFromEmojiList(pk, dTag) },
@@ -3413,6 +3418,7 @@ fun WispNavHost(
             .align(Alignment.BottomCenter)
             .padding(bottom = 16.dp)
     )
+    NsecPasteWarningOverlay()
     } // Box
 
     } // Scaffold

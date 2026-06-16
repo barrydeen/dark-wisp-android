@@ -591,7 +591,6 @@
     <string name="wallet_nwc_description">NWC 연결 문자열을 사용하여 외부 라이트닝 지갑을 연결합니다.</string>
     <string name="wallet_nwc_connection_string">NWC 연결 문자열</string>
     <string name="wallet_connect">연결</string>
-    <string name="wallet_spark">Spark 지갑</string>
     <string name="wallet_set_up_lightning">라이트닝 주소 설정</string>
     <string name="wallet_send">보내기</string>
     <string name="wallet_receive">받기</string>

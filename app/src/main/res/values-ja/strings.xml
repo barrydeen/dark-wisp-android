@@ -591,7 +591,6 @@
     <string name="wallet_nwc_description">NWC接続文字列を使用して外部Lightningウォレットを接続。</string>
     <string name="wallet_nwc_connection_string">NWC接続文字列</string>
     <string name="wallet_connect">接続</string>
-    <string name="wallet_spark">Sparkウォレット</string>
     <string name="wallet_set_up_lightning">Lightningアドレスを設定</string>
     <string name="wallet_send">送る</string>
     <string name="wallet_receive">受け取る</string>

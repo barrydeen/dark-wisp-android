@@ -552,7 +552,6 @@
     <string name="wallet_nwc_description">Подключите внешний кошелёк Lightning с помощью строки подключения NWC.</string>
     <string name="wallet_nwc_connection_string">Строка Подключения NWC</string>
     <string name="wallet_connect">Подключить</string>
-    <string name="wallet_spark">Кошелёк Spark</string>
     <string name="wallet_set_up_lightning">Настроить Адрес Lightning</string>
     <string name="wallet_send">Отправить</string>
     <string name="wallet_receive">Получить</string>

@@ -591,7 +591,6 @@
     <string name="wallet_nwc_description">Verbinden Sie eine externe Lightning-Brieftasche mit einer NWC-Verbindungszeichenfolge.</string>
     <string name="wallet_nwc_connection_string">NWC-Verbindungszeichenfolge</string>
     <string name="wallet_connect">Verbinden</string>
-    <string name="wallet_spark">Spark Brieftasche</string>
     <string name="wallet_set_up_lightning">Lightning-Adresse Einrichten</string>
     <string name="wallet_send">Senden</string>
     <string name="wallet_receive">Empfangen</string>

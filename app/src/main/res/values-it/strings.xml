@@ -591,7 +591,6 @@
     <string name="wallet_nwc_description">Connetti un portafoglio Lightning esterno usando una stringa di connessione NWC.</string>
     <string name="wallet_nwc_connection_string">Stringa di Connessione NWC</string>
     <string name="wallet_connect">Connetti</string>
-    <string name="wallet_spark">Portafoglio Spark</string>
     <string name="wallet_set_up_lightning">Configura il tuo Indirizzo Lightning</string>
     <string name="wallet_send">Invia</string>
     <string name="wallet_receive">Ricevi</string>

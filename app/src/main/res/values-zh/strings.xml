@@ -591,7 +591,6 @@
     <string name="wallet_nwc_description">使用NWC连接字符串连接外部Lightning钱包。</string>
     <string name="wallet_nwc_connection_string">NWC连接字符串</string>
     <string name="wallet_connect">连接</string>
-    <string name="wallet_spark">Spark钱包</string>
     <string name="wallet_set_up_lightning">设置Lightning地址</string>
     <string name="wallet_send">发送</string>
     <string name="wallet_receive">接收</string>

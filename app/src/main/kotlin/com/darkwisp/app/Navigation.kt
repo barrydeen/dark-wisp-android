@@ -2948,9 +2948,12 @@ fun WispNavHost(
         }
 
         composable(Routes.KEYS) {
+            val keysAvatarUrl = feedViewModel.getUserPubkey()
+                ?.let { feedViewModel.eventRepo.getProfileData(it)?.picture }
             KeysScreen(
                 keyRepository = authViewModel.keyRepo,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                avatarUrl = keysAvatarUrl
             )
         }
 

@@ -44,9 +44,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.toHex
 import com.darkwisp.app.repo.KeyRepository
+import com.darkwisp.app.ui.component.QrCodeDialog
 
 private fun android.content.Context.findFragmentActivity(): FragmentActivity? {
     var ctx = this
@@ -61,11 +82,15 @@ private fun android.content.Context.findFragmentActivity(): FragmentActivity? {
 @Composable
 fun KeysScreen(
     keyRepository: KeyRepository,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    avatarUrl: String? = null
 ) {
     val keypair = remember { keyRepository.getKeypair() }
     val npub = remember { keypair?.let { Nip19.npubEncode(it.pubkey) } }
+    val pubkeyHex = remember { keypair?.pubkey?.toHex() }
     var nsec by remember { mutableStateOf<String?>(null) }
+    var showNpubQr by remember { mutableStateOf(false) }
+    var showNsecQr by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -118,7 +143,14 @@ fun KeysScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(onClick = { if (pubkeyHex != null) showNpubQr = true }) {
+                        Icon(
+                            Icons.Outlined.QrCode,
+                            contentDescription = stringResource(R.string.cd_show_qr_code),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(onClick = {
                         npub?.let {
                             clipboardManager.setText(AnnotatedString(it))
@@ -132,6 +164,14 @@ fun KeysScreen(
                         )
                     }
                 }
+            }
+
+            if (showNpubQr && pubkeyHex != null) {
+                QrCodeDialog(
+                    pubkeyHex = pubkeyHex,
+                    avatarUrl = avatarUrl,
+                    onDismiss = { showNpubQr = false }
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -161,7 +201,14 @@ fun KeysScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(onClick = { showNsecQr = true }) {
+                            Icon(
+                                Icons.Outlined.QrCode,
+                                contentDescription = stringResource(R.string.cd_show_qr_code),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         IconButton(onClick = {
                             nsec?.let { key ->
                                 val clip = ClipData.newPlainText("", key)
@@ -182,6 +229,10 @@ fun KeysScreen(
                             )
                         }
                     }
+                }
+
+                if (showNsecQr) {
+                    nsec?.let { NsecQrDialog(nsec = it, avatarUrl = avatarUrl, onDismiss = { showNsecQr = false }) }
                 }
             } else {
                 Button(
@@ -238,4 +289,73 @@ fun KeysScreen(
             )
         }
     }
+}
+
+@Composable
+private fun NsecQrDialog(nsec: String, avatarUrl: String? = null, onDismiss: () -> Unit) {
+    val qrBitmap = remember(nsec) {
+        val hints = mapOf(EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M)
+        val writer = QRCodeWriter()
+        val size = 512
+        val matrix = writer.encode(nsec, BarcodeFormat.QR_CODE, size, size, hints)
+        val bmp = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.RGB_565)
+        for (x in 0 until matrix.width)
+            for (y in 0 until matrix.height)
+                bmp.setPixel(x, y, if (matrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE)
+        bmp
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.keys_nsec_qr_title)) },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(R.string.keys_nsec_qr_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(240.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(androidx.compose.ui.graphics.Color.White)
+                        .padding(8.dp)
+                ) {
+                    Image(
+                        bitmap = qrBitmap.asImageBitmap(),
+                        contentDescription = stringResource(R.string.keys_nsec_qr_title),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.matchParentSize()
+                    )
+                    if (avatarUrl != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(androidx.compose.ui.graphics.Color.White)
+                                .padding(3.dp)
+                        ) {
+                            AsyncImage(
+                                model = avatarUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clip(CircleShape)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_done)) }
+        }
+    )
 }

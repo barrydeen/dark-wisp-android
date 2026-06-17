@@ -59,6 +59,12 @@
     <string name="cd_wisp_logo">Dark Wisp logo</string>
 
     <!-- Auth Screen -->
+    <string name="splash_continue_with_nostr">Continue with Nostr</string>
+    <string name="cd_nostr_logo">Nostr logo</string>
+    <string name="nostr_sheet_title">Continue with Nostr</string>
+    <string name="nostr_sheet_body">Enter your existing key, or create a new account. Your key never leaves the device.</string>
+    <string name="nostr_sheet_create">Create new account</string>
+    <string name="nostr_sheet_creating">Creating…</string>
     <string name="auth_sign_up">Sign Up</string>
     <string name="auth_log_in">Log In</string>
     <string name="auth_login_with_signer">Login with Signer</string>

@@ -693,15 +693,50 @@ fun WispNavHost(
         composable(Routes.SPLASH) {
             SplashScreen(
                 viewModel = splashViewModel,
-                onSignUp = {
-                    if (authViewModel.signUp()) {
-                        navController.navigate(Routes.ONBOARDING_PROFILE) {
+                authViewModel = authViewModel,
+                // Account creation (signUp) already happened inside the sheet.
+                onAccountCreated = {
+                    navController.navigate(Routes.ONBOARDING_PROFILE) {
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                },
+                // Mirrors AuthScreen's onAuthenticated(false) routing, but pops
+                // up to SPLASH since both first-login and add-account flow
+                // through the splash sheet now.
+                onLoggedIn = {
+                    val wasAddingAccount = authViewModel.isAddingAccount
+                    authViewModel.isAddingAccount = false
+
+                    if (wasAddingAccount && authViewModel.keyRepo.isOnboardingComplete()) {
+                        feedViewModel.reloadForNewAccount()
+                        relayViewModel.reload()
+                        blossomServersViewModel.reload()
+                        composeViewModel.reloadBlossomRepo()
+                        feedViewModel.initRelays()
+                        walletViewModel.refreshState()
+                        navController.navigate(Routes.LOADING) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    } else if (authViewModel.keyRepo.isReadOnly()) {
+                        feedViewModel.reloadForNewAccount()
+                        relayViewModel.reload()
+                        feedViewModel.initRelays()
+                        authViewModel.keyRepo.markOnboardingComplete()
+                        navController.navigate(Routes.LOADING) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    } else {
+                        feedViewModel.reloadForNewAccount()
+                        relayViewModel.reload()
+                        blossomServersViewModel.reload()
+                        composeViewModel.reloadBlossomRepo()
+                        feedViewModel.initRelays()
+                        walletViewModel.refreshState()
+                        authViewModel.keyRepo.markOnboardingComplete()
+                        navController.navigate(Routes.EXISTING_USER_ONBOARDING) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
                     }
-                },
-                onLogIn = {
-                    navController.navigate(Routes.AUTH)
                 },
                 onToggleTor = { feedViewModel.setTorEnabled(it) }
             )

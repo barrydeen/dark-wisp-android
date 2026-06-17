@@ -39,6 +39,12 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
         _error.value = null
     }
 
+    /** nsec for the active local account, or null when read-only / signer-backed. */
+    fun getCurrentNsec(): String? {
+        val keypair = keyRepo.getKeypair() ?: return null
+        return Nip19.nsecEncode(keypair.privkey)
+    }
+
     fun signUp(): Boolean {
         return try {
             val keypair = Keys.generate()

@@ -2599,16 +2599,6 @@ private fun ReceiveAmountContent(
             // Lightning address — shown below invoice form as "or receive via" row
             if (!lightningAddress.isNullOrBlank()) {
                 Spacer(Modifier.height(24.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    stringResource(R.string.wallet_receive_via_address),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(12.dp))
                 LightningAddressReceiveRow(address = lightningAddress, onShowQR = onShowAddressQR)
             }
         }

@@ -58,6 +58,9 @@ class NwcRepository(private val context: Context, private val relayPool: RelayPo
     private val _paymentReceived = MutableSharedFlow<Long>(extraBufferCapacity = 8)
     override val paymentReceived: SharedFlow<Long> = _paymentReceived
 
+    private val _transactionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    override val transactionsChanged: SharedFlow<Unit> = _transactionsChanged
+
     private fun emitStatus(msg: String) {
         Log.d(TAG, msg)
         _statusLog.tryEmit(msg)
@@ -348,10 +351,19 @@ class NwcRepository(private val context: Context, private val relayPool: RelayPo
         return result.map { (it as Nip47.NwcResponse.PayInvoiceResult).preimage }
     }
 
-    override suspend fun makeInvoice(amountMsats: Long, description: String): Result<String> {
-        val result = sendRequest(Nip47.NwcRequest.MakeInvoice(amountMsats, description))
+    override suspend fun makeInvoice(amountMsats: Long, description: String, expirySecs: Int): Result<String> {
+        val result = sendRequest(Nip47.NwcRequest.MakeInvoice(amountMsats, description, expirySecs))
         return result.map { (it as Nip47.NwcResponse.MakeInvoiceResult).invoice }
     }
+
+    override suspend fun getDepositAddress(): Result<String> =
+        Result.failure(UnsupportedOperationException("NWC does not support on-chain receive"))
+
+    override suspend fun prepareOnchainSend(address: String, amountSats: Long): Result<Pair<OnchainFeeQuote, Any>> =
+        Result.failure(UnsupportedOperationException("NWC does not support on-chain send"))
+
+    override suspend fun sendOnchain(prepareData: Any, speed: String): Result<String> =
+        Result.failure(UnsupportedOperationException("NWC does not support on-chain send"))
 
     suspend fun listNwcTransactions(limit: Int = 50, offset: Int = 0): Result<List<Nip47.Transaction>> {
         val result = sendRequest(Nip47.NwcRequest.ListTransactions(limit = limit, offset = offset))

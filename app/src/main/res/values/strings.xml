@@ -776,6 +776,46 @@
     <string name="wallet_receive_note_label">NOTE (OPTIONAL)</string>
     <string name="wallet_receive_note_placeholder">For coffee, etc.</string>
     <string name="wallet_receive_create_invoice">Create invoice</string>
+    <!-- Updated tab labels for Spark on-chain receive -->
+    <string name="wallet_receive_lightning_tab">Lightning</string>
+    <string name="wallet_receive_bitcoin_tab">Bitcoin</string>
+    <!-- Invoice expiry selector -->
+    <string name="wallet_receive_expires_label">EXPIRES</string>
+    <string name="wallet_receive_expires_1h">1 hour</string>
+    <string name="wallet_receive_expires_24h">24 hours</string>
+    <string name="wallet_receive_expires_custom">Custom</string>
+    <string name="wallet_receive_expires_hours">Hours until expiry</string>
+    <!-- Lightning address receive row -->
+    <string name="wallet_receive_via_address">or receive to your Lightning address</string>
+    <string name="wallet_copy_address">Copy address</string>
+    <string name="wallet_share_address">Share address</string>
+    <string name="wallet_share">Share</string>
+    <!-- Bitcoin on-chain deposit address -->
+    <string name="cd_bitcoin_address_qr">Bitcoin address QR code</string>
+    <!-- On-chain send flow -->
+    <string name="wallet_onchain_send_title">Send Payment</string>
+    <string name="wallet_onchain_bitcoin_detected">Bitcoin address detected – on-chain payment</string>
+    <string name="wallet_onchain_amount_sats">Amount (sats)</string>
+    <string name="wallet_onchain_use_all" formatted="false">Use All (%,d sats)</string>
+    <string name="wallet_onchain_fetching_fee">Estimating fee…</string>
+    <string name="wallet_onchain_get_fee_quote">Get Fee Quote</string>
+    <string name="wallet_onchain_amount">Amount</string>
+    <string name="wallet_onchain_fee">Network Fee</string>
+    <string name="wallet_onchain_total">Total</string>
+    <string name="wallet_onchain_continue">Continue</string>
+    <string name="wallet_onchain_plus_fee" formatted="false">+ %,d sats fee</string>
+    <string name="wallet_onchain_sending_to">Sending to:</string>
+    <string name="wallet_onchain_irreversible_warning">Bitcoin transactions cannot be reversed. Please verify the address is correct.</string>
+    <string name="wallet_onchain_send_confirm">Confirm Send</string>
+    <string name="wallet_onchain_payment_sent">Sent</string>
+    <string name="wallet_onchain_payment_failed">Send Failed</string>
+    <string name="wallet_onchain_view_mempool">View on mempool.space</string>
+    <!-- Spark send placeholder (accepts Lightning + Bitcoin addresses) -->
+    <string name="placeholder_send_spark">Lightning invoice or Bitcoin address</string>
+    <!-- Generic actions -->
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="done">Done</string>
     <string name="wallet_backup_missing_title">Wallet backup not found</string>
     <string name="wallet_backup_missing_body">Your wallet recovery phrase is not backed up to any relay. If you lose this device, you could lose your funds.</string>
     <string name="wallet_backup_now">Backup Now</string>

@@ -10,6 +10,7 @@ import breez_sdk_spark.EventListener
 import breez_sdk_spark.GetInfoRequest
 import breez_sdk_spark.ListPaymentsRequest
 import breez_sdk_spark.Network
+import breez_sdk_spark.OnchainConfirmationSpeed
 import breez_sdk_spark.PaymentDetails
 import breez_sdk_spark.PaymentType
 import breez_sdk_spark.PrepareSendPaymentRequest
@@ -100,6 +101,9 @@ class SparkRepository(
 
     private val _paymentReceived = MutableSharedFlow<Long>(extraBufferCapacity = 8)
     override val paymentReceived: SharedFlow<Long> = _paymentReceived
+
+    private val _transactionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    override val transactionsChanged: SharedFlow<Unit> = _transactionsChanged
 
     // Identity pubkey from the SDK's GetInfoResponse — exposed for the
     // Wallet Info expandable in settings. Populated on first balance fetch
@@ -267,15 +271,19 @@ class SparkRepository(
                             is SdkEvent.PaymentSucceeded -> {
                                 emitStatus("Payment succeeded")
                                 refreshBalanceInternal()
+                                _transactionsChanged.tryEmit(Unit)
                                 if (e.payment.paymentType == PaymentType.RECEIVE) {
                                     _paymentReceived.tryEmit(e.payment.amount.toLong() * 1000)
                                 }
                             }
                             is SdkEvent.PaymentFailed -> {
                                 emitStatus("Payment failed")
+                                _transactionsChanged.tryEmit(Unit)
                             }
                             is SdkEvent.PaymentPending -> {
                                 emitStatus("Payment pending")
+                                refreshBalanceInternal()
+                                _transactionsChanged.tryEmit(Unit)
                             }
                             else -> {}
                         }
@@ -425,7 +433,7 @@ class SparkRepository(
 
     // --- Receive ---
 
-    override suspend fun makeInvoice(amountMsats: Long, description: String): Result<String> =
+    override suspend fun makeInvoice(amountMsats: Long, description: String, expirySecs: Int): Result<String> =
         withContext(Dispatchers.IO) {
             try {
                 val instance = sdk ?: return@withContext Result.failure(Exception("Not connected"))
@@ -435,7 +443,7 @@ class SparkRepository(
                 val method = ReceivePaymentMethod.Bolt11Invoice(
                     description = description.ifEmpty { "Wisp wallet" },
                     amountSats = amountSats,
-                    expirySecs = 3600u,
+                    expirySecs = expirySecs.toUInt(),
                     paymentHash = null
                 )
                 val response = instance.receivePayment(ReceivePaymentRequest(method))
@@ -446,6 +454,58 @@ class SparkRepository(
                 Result.failure(e)
             }
         }
+
+    override suspend fun getDepositAddress(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val instance = sdk ?: return@withContext Result.failure(Exception("Not connected"))
+            val response = instance.receivePayment(ReceivePaymentRequest(ReceivePaymentMethod.BitcoinAddress))
+            Result.success(response.paymentRequest)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun prepareOnchainSend(address: String, amountSats: Long): Result<Pair<OnchainFeeQuote, Any>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val instance = sdk ?: return@withContext Result.failure(Exception("Not connected"))
+                val prepareReq = PrepareSendPaymentRequest(
+                    paymentRequest = address,
+                    amount = java.math.BigInteger.valueOf(amountSats)
+                )
+                val prepareResponse = instance.prepareSendPayment(prepareReq)
+                val method = prepareResponse.paymentMethod as? SendPaymentMethod.BitcoinAddress
+                    ?: return@withContext Result.failure(Exception("Not a Bitcoin address payment"))
+                val feeQuote = method.feeQuote
+                val quote = OnchainFeeQuote(
+                    fastFeeSats = (feeQuote.speedFast.userFeeSat + feeQuote.speedFast.l1BroadcastFeeSat).toLong(),
+                    mediumFeeSats = (feeQuote.speedMedium.userFeeSat + feeQuote.speedMedium.l1BroadcastFeeSat).toLong(),
+                    slowFeeSats = (feeQuote.speedSlow.userFeeSat + feeQuote.speedSlow.l1BroadcastFeeSat).toLong()
+                )
+                Result.success(Pair(quote, prepareResponse as Any))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun sendOnchain(prepareData: Any, speed: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val instance = sdk ?: return@withContext Result.failure(Exception("Not connected"))
+            val prepareResponse = prepareData as breez_sdk_spark.PrepareSendPaymentResponse
+            val confirmationSpeed = when (speed) {
+                "FAST" -> OnchainConfirmationSpeed.FAST
+                "SLOW" -> OnchainConfirmationSpeed.SLOW
+                else -> OnchainConfirmationSpeed.MEDIUM
+            }
+            val options = SendPaymentOptions.BitcoinAddress(confirmationSpeed = confirmationSpeed)
+            val sendResponse = instance.sendPayment(SendPaymentRequest(prepareResponse, options))
+            emitStatus("Bitcoin sent")
+            Result.success(sendResponse.payment.id)
+        } catch (e: Exception) {
+            emitStatus("Bitcoin send failed: ${e.message}")
+            Result.failure(e)
+        }
+    }
 
     // --- Sync polling ---
 

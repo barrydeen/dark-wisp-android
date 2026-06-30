@@ -812,6 +812,7 @@
     <string name="wallet_onchain_view_mempool">View on mempool.space</string>
     <!-- Spark send placeholder (accepts Lightning + Bitcoin addresses) -->
     <string name="placeholder_send_spark">Lightning invoice or Bitcoin address</string>
+    <string name="wallet_send_input_hint_onchain">Lightning or Bitcoin address, invoice, or CLINK offer</string>
     <!-- Generic actions -->
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
@@ -901,6 +902,8 @@
     <string name="section_invite_codes">Invite codes</string>
     <string name="action_generate_invite">Generate invite code</string>
     <string name="label_latest_invite_code">Latest invite code</string>
+    <string name="action_copy">Copy</string>
+    <string name="wallet_tx_pending">Pending</string>
     <string name="action_copy_code">Copy code</string>
     <string name="action_copy_invite_link">Copy invite link</string>
     <string name="title_assign_role">Assign role</string>

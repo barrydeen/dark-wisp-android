@@ -293,7 +293,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                             val event = relayEvent.event
                             if (event.kind == 1 && event.id !in seenNoteIds) {
                                 if (muteRepo?.isBlocked(event.pubkey) == true) return@collect
-                                if (muteRepo?.containsMutedWord(event.content) == true) return@collect
+                                if (muteRepo?.isEventMuted(event) == true) return@collect
                                 seenNoteIds.add(event.id)
                                 _notes.value = _notes.value + event
                                 eventRepo.cacheEvent(event)

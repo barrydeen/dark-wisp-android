@@ -2102,4 +2102,54 @@ class WalletViewModel(
     fun resetDeleteBackupStatus() {
         _deleteBackupStatus.value = DeleteBackupStatus.Idle
     }
+
+    /**
+     * Tombstone only the NWC connection backup (kind 30078, d-tag
+     * `nwc-wallet-backup`) on relays — scoped so it doesn't wipe a Spark
+     * mnemonic backup. Shares [_deleteBackupStatus] for UI feedback.
+     */
+    fun deleteNwcRelayBackup() = tombstoneRelayBackup(Nip78.NWC_BACKUP_D_TAG)
+
+    /**
+     * Tombstone only the active Spark wallet's backup (kind 30078, d-tag
+     * `spark-wallet-backup:<walletId>`) — scoped so it doesn't wipe an NWC
+     * connection backup.
+     */
+    fun deleteSparkRelayBackup() {
+        val mnemonic = sparkRepo.getMnemonic() ?: run {
+            _deleteBackupStatus.value = DeleteBackupStatus.Error("No Spark wallet loaded")
+            return
+        }
+        tombstoneRelayBackup(Nip78.buildBackupDTag(Nip78.computeWalletId(mnemonic)))
+    }
+
+    /**
+     * Publish an empty kind 30078 tombstone (replaceable by d-tag) for [dTag]
+     * so relays replace the stored backup with a deleted marker. Scoped
+     * counterpart to [deleteRelayBackup] (which nukes every backup d-tag).
+     */
+    private fun tombstoneRelayBackup(dTag: String) {
+        val signer = buildSigner() ?: run {
+            _deleteBackupStatus.value = DeleteBackupStatus.Error("No signing key available")
+            return
+        }
+        _deleteBackupStatus.value = DeleteBackupStatus.InProgress
+        viewModelScope.launch {
+            try {
+                relayPool.ensureWriteRelaysConnected()
+                val tombstone = withContext(Dispatchers.Default) {
+                    Nip78.createDeleteEventForDTag(signer, dTag)
+                }
+                val totalSent = relayPool.sendToAllRelays(ClientMessage.event(tombstone))
+                Log.d("WalletBackup", "delete: tombstone dTag=$dTag sent to $totalSent relay slots")
+                _deleteBackupStatus.value = if (totalSent > 0) {
+                    DeleteBackupStatus.Success
+                } else {
+                    DeleteBackupStatus.Error("No relays accepted the delete")
+                }
+            } catch (e: Exception) {
+                _deleteBackupStatus.value = DeleteBackupStatus.Error(e.message ?: "Delete failed")
+            }
+        }
+    }
 }

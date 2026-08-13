@@ -1,5 +1,6 @@
 package com.darkwisp.app.ui.screen
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -111,7 +112,12 @@ fun AuthScreen(
 
     DisposableEffect(Unit) {
         NsecPasteGuard.nsecPasteAllowed = true
-        onDispose { NsecPasteGuard.nsecPasteAllowed = false }
+        onDispose {
+            NsecPasteGuard.nsecPasteAllowed = false
+            // Don't let a typed-but-unsubmitted key linger in the ViewModel
+            // after the user backs out of this screen.
+            viewModel.updateNsecInput("")
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -207,7 +213,19 @@ fun AuthScreen(
     
             OutlinedButton(
                 onClick = {
-                    if (viewModel.logIn()) onAuthenticated(false)
+                    if (viewModel.logIn()) {
+                        // npub/hex logins are watch-only; say so explicitly. A
+                        // pasted hex private key is indistinguishable from a
+                        // pubkey and would otherwise silently lack posting.
+                        if (viewModel.keyRepo.isReadOnly()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.auth_read_only_notice),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        onAuthenticated(false)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {

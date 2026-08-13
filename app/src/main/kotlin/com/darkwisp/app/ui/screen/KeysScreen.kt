@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContextWrapper
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PersistableBundle
 import android.widget.Toast
 import androidx.biometric.BiometricManager
@@ -49,6 +51,8 @@ import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.hexToByteArray
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.SigningMode
+
+private const val NSEC_CLIPBOARD_CLEAR_MS = 60_000L
 
 private fun android.content.Context.findFragmentActivity(): FragmentActivity? {
     var ctx = this
@@ -208,7 +212,27 @@ fun KeysScreen(
                                         }
                                         val cm = context.getSystemService(ClipboardManager::class.java)
                                         cm.setPrimaryClip(clip)
-                                        Toast.makeText(context, context.getString(R.string.settings_private_key_copied), Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.settings_private_key_copied_autoclear), Toast.LENGTH_SHORT).show()
+                                        // Auto-clear so the key doesn't sit on the clipboard
+                                        // indefinitely. Only clears if the clipboard still holds
+                                        // this key, leaving any newer copy alone. On Android 10+
+                                        // clipboard access requires focus, so if the app is in
+                                        // the background at that point the clear is skipped.
+                                        Handler(Looper.getMainLooper()).postDelayed({
+                                            val current = try {
+                                                cm.primaryClip?.takeIf { it.itemCount > 0 }
+                                                    ?.getItemAt(0)?.text?.toString()
+                                            } catch (_: SecurityException) {
+                                                null
+                                            }
+                                            if (current == key) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                                    cm.clearPrimaryClip()
+                                                } else {
+                                                    cm.setPrimaryClip(ClipData.newPlainText("", ""))
+                                                }
+                                            }
+                                        }, NSEC_CLIPBOARD_CLEAR_MS)
                                     }
                                 }) {
                                     Icon(

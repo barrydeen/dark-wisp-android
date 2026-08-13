@@ -68,6 +68,7 @@
     <string name="auth_tagline">a wee interface to scroll posts</string>
     <string name="auth_hide_key">Hide key</string>
     <string name="auth_show_key">Show key</string>
+    <string name="auth_read_only_notice">Logged in read-only with a public key. You can browse, but posting and reactions are disabled.</string>
 
     <!-- Buttons -->
     <string name="btn_continue">Continue</string>
@@ -537,6 +538,7 @@
     <string name="settings_private_key">Private Key</string>
     <string name="settings_public_key_copied">Public key copied</string>
     <string name="settings_private_key_copied">Private key copied</string>
+    <string name="settings_private_key_copied_autoclear">Private key copied. Clipboard clears in 60 seconds.</string>
     <string name="settings_authenticate_view_key">Authenticate to view your private key</string>
     <string name="settings_auth_failed">Authentication failed: %s</string>
     <string name="settings_never_share_key">Never share your private key. Anyone with your nsec has full control of your account.</string>

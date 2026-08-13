@@ -8,6 +8,7 @@ import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.RelayMessage
 import com.darkwisp.app.nostr.RelayMessage.Auth
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 data class RelayEvent(val event: NostrEvent, val relayUrl: String, val subscriptionId: String)
 data class PublishResult(val relayUrl: String, val eventId: String, val accepted: Boolean, val message: String)
+data class PublishOutcome(val sentCount: Int, val confirmed: Boolean)
 data class BroadcastState(val accepted: Int, val sent: Int)
 
 class RelayPool(private val prefs: SharedPreferences? = null) {
@@ -131,6 +133,8 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
         const val MAX_PERSISTENT = 30
         const val MAX_DM_RELAYS = 10
         const val MAX_EPHEMERAL = 50
+        /** How long publishWithConfirmation waits for the first accepted OK. */
+        const val PUBLISH_OK_TIMEOUT_MS = 8000L
         const val COOLDOWN_DOWN_MS = 10 * 60 * 1000L    // 10 min — 5xx, connection failures (ephemeral only)
         const val COOLDOWN_REJECTED_MS = 1 * 60 * 1000L // 1 min — 4xx like 401/403/429
         const val COOLDOWN_NETWORK_MS = 5_000L           // 5s — DNS/network failures on persistent relays
@@ -736,6 +740,85 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
             delay(1500)
             _broadcastState.value = null
         }
+    }
+
+    /**
+     * Runs [send] and waits for the first accepted NIP-20 OK for [eventId].
+     *
+     * The OK collector is started BEFORE [send] runs so a fast acknowledgment
+     * cannot be missed. While waiting it also drives [broadcastState] for the
+     * broadcast pill, replacing [trackPublish] for callers of this method.
+     *
+     * Returns the sent count from [send] plus whether any relay accepted the
+     * event within [timeoutMs]. An unconfirmed outcome means no relay
+     * acknowledged the event; with a half-open socket (e.g. after device
+     * sleep) OkHttp still reports the enqueue as successful, so this is the
+     * only reliable delivery signal.
+     */
+    suspend fun publishWithConfirmation(
+        eventId: String,
+        timeoutMs: Long = PUBLISH_OK_TIMEOUT_MS,
+        send: () -> Int
+    ): PublishOutcome {
+        val firstAccepted = CompletableDeferred<Unit>()
+        var accepted = 0
+        var sent = 0
+        val collector = scope.launch {
+            publishResults
+                .filter { it.eventId == eventId }
+                .collect { result ->
+                    if (result.accepted) {
+                        accepted++
+                        if (!firstAccepted.isCompleted) firstAccepted.complete(Unit)
+                    }
+                    _broadcastState.value = BroadcastState(accepted = accepted, sent = sent)
+                }
+        }
+        sent = send()
+        if (sent == 0) {
+            collector.cancel()
+            return PublishOutcome(0, false)
+        }
+        _broadcastState.value = BroadcastState(accepted = accepted, sent = sent)
+        val confirmed = withTimeoutOrNull(timeoutMs) {
+            firstAccepted.await()
+            true
+        } ?: false
+        // Keep counting straggler OKs for the pill briefly, then clear it
+        // (mirrors trackPublish's lifecycle).
+        scope.launch {
+            delay(4000)
+            collector.cancel()
+            delay(1500)
+            _broadcastState.value = null
+        }
+        return PublishOutcome(sent, confirmed)
+    }
+
+    /**
+     * Force-reconnects all write relays by tearing down their sockets and
+     * reconnecting. Unlike [ensureWriteRelaysConnected], this also recycles
+     * relays whose [Relay.isConnected] flag is stale (half-open TCP after
+     * device sleep, where OkHttp has not yet noticed the dead socket).
+     * Returns the number of write relays connected after waiting up to
+     * [timeoutMs].
+     */
+    suspend fun cycleWriteRelays(timeoutMs: Long = 5000): Int {
+        val writeRelays = relays.filter { it.config.write }
+        if (writeRelays.isEmpty()) return 0
+        Log.d("RLC", "[Pool] cycleWriteRelays — recycling ${writeRelays.size} write relay socket(s)")
+        for (relay in writeRelays) {
+            relay.forceDisconnect()
+            relay.resetBackoff()
+            relay.connect()
+        }
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val connected = writeRelays.count { it.isConnected }
+            if (connected > 0) return connected
+            delay(200)
+        }
+        return writeRelays.count { it.isConnected }
     }
 
     fun sendToReadRelays(message: String) {

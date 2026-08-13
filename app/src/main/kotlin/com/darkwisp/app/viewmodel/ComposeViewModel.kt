@@ -861,28 +861,45 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         val event = signer.signEvent(kind = eventKind, content = finalContent, tags = tags)
         android.util.Log.d("GALLERY", "[ComposeVM] publishNote kind=$eventKind id=${event.id.take(12)} content='${finalContent.take(50)}' tags=${tags.size} galleryMode=${_galleryMode.value} uploadedUrls=${_uploadedUrls.value.size}")
         val msg = ClientMessage.event(event)
-        var sentCount = if (outboxRouter != null && inboxPubkeys.isNotEmpty()) {
-            outboxRouter.publishToInbox(msg, inboxPubkeys)
-        } else {
-            relayPool.sendToWriteRelays(msg)
-        }
-        // If no relays were reachable, try reconnecting write relays and retry once
-        if (sentCount == 0) {
-            val reconnected = relayPool.ensureWriteRelaysConnected()
-            if (reconnected > 0) {
-                sentCount = if (outboxRouter != null && inboxPubkeys.isNotEmpty()) {
-                    outboxRouter.publishToInbox(msg, inboxPubkeys)
-                } else {
-                    relayPool.sendToWriteRelays(msg)
-                }
+        val doSend = {
+            if (outboxRouter != null && inboxPubkeys.isNotEmpty()) {
+                outboxRouter.publishToInbox(msg, inboxPubkeys)
+            } else {
+                relayPool.sendToWriteRelays(msg)
             }
         }
-        if (sentCount == 0) {
+        // Success is gated on a NIP-20 OK from at least one relay. A send that
+        // merely enqueued into OkHttp is not delivery: after device sleep the
+        // sockets can be half-open, where isConnected is stale and the enqueue
+        // "succeeds" into a connection the relay already dropped.
+        var outcome = relayPool.publishWithConfirmation(event.id, send = doSend)
+        // If no relays were reachable, try reconnecting write relays and retry once
+        if (outcome.sentCount == 0) {
+            val reconnected = relayPool.ensureWriteRelaysConnected()
+            if (reconnected > 0) {
+                outcome = relayPool.publishWithConfirmation(event.id, send = doSend)
+            }
+        }
+        if (outcome.sentCount == 0) {
             _error.value = getApplication<Application>().getString(R.string.error_no_relays_connected)
             _publishing.value = false
             return 0
         }
-        relayPool.trackPublish(event.id, sentCount)
+        if (!outcome.confirmed) {
+            // Sent but nothing acknowledged: recycle the write sockets and
+            // resend the same signed event. Relays dedupe by event id, so a
+            // resend can never duplicate the note.
+            if (relayPool.cycleWriteRelays() > 0) {
+                outcome = relayPool.publishWithConfirmation(event.id, send = doSend)
+            }
+        }
+        if (!outcome.confirmed) {
+            // Keep the composed text and publishing state intact so the user
+            // can retry instead of silently losing the note.
+            _error.value = getApplication<Application>().getString(R.string.error_publish_unconfirmed)
+            _publishing.value = false
+            return 0
+        }
         // Insert into feed so the note appears immediately without waiting for relay echo
         eventRepo?.addEvent(event)
         if (replyTo != null) {
@@ -901,7 +918,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         _uploadedMediaMeta.clear()
         _error.value = null
         _publishing.value = false
-        return sentCount
+        return outcome.sentCount
     }
 
     private suspend fun publishPrivateReply(

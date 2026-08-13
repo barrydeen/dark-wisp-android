@@ -266,6 +266,8 @@
     <string name="cd_seen_on">Seen on</string>
     <string name="cd_sent_with">Sent with</string>
     <string name="cd_filter_notifications">Filter notifications</string>
+    <string name="cd_notif_style_compact">Switch to compact notifications</string>
+    <string name="cd_notif_style_expanded">Switch to expanded notifications</string>
     <string name="filter_all">All</string>
     <string name="filter_replies">Replies</string>
     <string name="filter_zaps">Zaps</string>
@@ -515,6 +517,13 @@
     <string name="settings_media_layout_stack">Stack</string>
     <string name="settings_hide_live_streams">Hide live streams</string>
     <string name="settings_hide_live_streams_description">Hide the live streams row from the top of your feed</string>
+    <!-- Notifications display -->
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notif_list_style">List style</string>
+    <string name="settings_notif_list_style_description">Expanded: every notification shows its note, zap message, or poll inline. Compact: one-line rows you tap to open.</string>
+    <string name="settings_notif_list_style_expanded">Expanded</string>
+    <string name="settings_notif_list_style_compact">Compact</string>
+
     <string name="settings_client_tag">Client Tag</string>
     <string name="settings_tag_notes">Tag notes with Dark Wisp</string>
     <string name="settings_tag_notes_description">Include a tag identifying Dark Wisp as the client. This is visible to others.</string>

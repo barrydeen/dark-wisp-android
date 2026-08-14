@@ -2,6 +2,7 @@ package com.darkwisp.app.ui.screen
 
 import android.Manifest
 import android.content.ClipData
+import android.widget.Toast
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -611,6 +612,9 @@ fun WalletScreen(
                         isLoggedIn = viewModel.keyRepo.isLoggedIn(),
                         onCheckRelayBackups = { viewModel.checkRelayBackupStatuses() },
                         onDeleteRelayBackup = { viewModel.deleteRelayBackup() },
+                        onDeleteNwcRelayBackup = { viewModel.deleteNwcRelayBackup() },
+                        onDeleteSparkRelayBackup = { viewModel.deleteSparkRelayBackup() },
+                        onResetDeleteBackupStatus = { viewModel.resetDeleteBackupStatus() },
                         sparkIdentityPubkey = viewModel.sparkIdentityPubkey.collectAsState().value,
                         nwcNodeAlias = viewModel.nwcNodeAlias.collectAsState().value,
                         nwcConnectionInfo = viewModel.nwcConnectionInfo.collectAsState().value,
@@ -633,14 +637,25 @@ fun WalletScreen(
                         address = viewModel.lightningAddress.value ?: "",
                         modifier = Modifier.padding(padding)
                     )
-                    is WalletPage.DeleteWalletConfirm -> DeleteWalletConfirmContent(
-                        confirmText = viewModel.deleteConfirmText.collectAsState().value,
-                        onConfirmTextChange = { viewModel.updateDeleteConfirmText(it) },
-                        onDelete = { viewModel.deleteWallet() },
-                        onCancel = { viewModel.navigateBack() },
-                        walletMode = viewModel.walletMode.collectAsState().value,
-                        modifier = Modifier.padding(padding)
-                    )
+                    is WalletPage.DeleteWalletConfirm -> {
+                        val context = LocalContext.current
+                        val walletMode = viewModel.walletMode.collectAsState().value
+                        DeleteWalletConfirmContent(
+                            confirmText = viewModel.deleteConfirmText.collectAsState().value,
+                            onConfirmTextChange = { viewModel.updateDeleteConfirmText(it) },
+                            onDelete = {
+                                viewModel.deleteWallet()
+                                Toast.makeText(
+                                    context,
+                                    if (walletMode == WalletMode.NWC) "Wallet disconnected" else "Wallet removed",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            onCancel = { viewModel.navigateBack() },
+                            walletMode = walletMode,
+                            modifier = Modifier.padding(padding)
+                        )
+                    }
                     is WalletPage.BackupToRelay -> BackupToRelayContent(
                         backupStatus = viewModel.backupStatus.collectAsState().value,
                         onBackup = { viewModel.backupToRelay() },
@@ -4094,6 +4109,9 @@ private fun WalletSettingsContent(
     isLoggedIn: Boolean = false,
     onCheckRelayBackups: () -> Unit = {},
     onDeleteRelayBackup: () -> Unit = {},
+    onDeleteNwcRelayBackup: () -> Unit = {},
+    onDeleteSparkRelayBackup: () -> Unit = {},
+    onResetDeleteBackupStatus: () -> Unit = {},
     sparkIdentityPubkey: String? = null,
     nwcNodeAlias: String? = null,
     nwcConnectionInfo: com.darkwisp.app.repo.NwcRepository.ConnectionInfo? = null,
@@ -4356,6 +4374,17 @@ private fun WalletSettingsContent(
                 Spacer(Modifier.width(8.dp))
                 Text("Backup to Nostr Relays")
             }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Delete the saved Spark wallet backup from relays. Scoped to this
+            // wallet's d-tag so it won't touch an NWC connection backup.
+            DeleteRelayBackupControl(
+                label = "Delete Wallet Backup from Relays",
+                deleteBackupStatus = deleteBackupStatus,
+                onDelete = onDeleteSparkRelayBackup,
+                onResetStatus = onResetDeleteBackupStatus
+            )
         }
 
         // Disclaimer
@@ -4421,6 +4450,16 @@ private fun WalletSettingsContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            // Delete the saved NWC connection backup from relays. Scoped to the
+            // nwc-wallet-backup d-tag so it won't touch a Spark mnemonic backup.
+            Spacer(Modifier.height(16.dp))
+            DeleteRelayBackupControl(
+                label = "Delete Connection Backup from Relays",
+                deleteBackupStatus = deleteBackupStatus,
+                onDelete = onDeleteNwcRelayBackup,
+                onResetStatus = onResetDeleteBackupStatus
             )
         } else {
             Button(
@@ -4496,6 +4535,65 @@ private fun WalletSettingsContent(
         }
 
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+/**
+ * Outlined button that deletes the user's wallet backup from Nostr relays
+ * (scoped per wallet mode by the caller's [onDelete]), with a confirm
+ * dialog and InProgress/Success/Error feedback via [deleteBackupStatus].
+ */
+@Composable
+private fun DeleteRelayBackupControl(
+    label: String,
+    deleteBackupStatus: DeleteBackupStatus,
+    onDelete: () -> Unit,
+    onResetStatus: () -> Unit,
+) {
+    var showConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Toast the outcome prominently, then clear status so re-entering the
+    // screen doesn't re-fire a stale toast.
+    LaunchedEffect(deleteBackupStatus) {
+        when (deleteBackupStatus) {
+            is DeleteBackupStatus.Success -> {
+                Toast.makeText(context, "Backup deleted from relays", Toast.LENGTH_SHORT).show()
+                onResetStatus()
+            }
+            is DeleteBackupStatus.Error -> {
+                Toast.makeText(context, deleteBackupStatus.message, Toast.LENGTH_LONG).show()
+                onResetStatus()
+            }
+            else -> {}
+        }
+    }
+    OutlinedButton(
+        onClick = { showConfirm = true },
+        enabled = deleteBackupStatus !is DeleteBackupStatus.InProgress,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            if (deleteBackupStatus is DeleteBackupStatus.InProgress) "Deleting…"
+            else label
+        )
+    }
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text("Delete backup from relays") },
+            text = {
+                Text("Remove the saved wallet backup from your relays? You can reconnect or restore from your recovery phrase anytime, but it won't be available from relays on another device.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirm = false
+                    onDelete()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

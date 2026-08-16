@@ -117,7 +117,7 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
                         val event = relayEvent.event
                         if (event.kind == 1 && event.id !in seenIds) {
                             if (muteRepo?.isBlocked(event.pubkey) == true) return@collect
-                            if (muteRepo?.containsMutedWord(event.content) == true) return@collect
+                            if (muteRepo?.isEventMuted(event) == true) return@collect
                             seenIds.add(event.id)
                             eventRepo.cacheEvent(event)
                             eventRepo.requestProfileIfMissing(event.pubkey)

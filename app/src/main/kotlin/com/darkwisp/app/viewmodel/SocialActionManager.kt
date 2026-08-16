@@ -203,6 +203,10 @@ class SocialActionManager(
     }
 
     fun updateMutedWords() {
+        // Drop now-matching notes from the live feed before re-publishing,
+        // since mute filtering otherwise only happens at ingest — without
+        // this, already-displayed posts stay until the feed is refetched.
+        eventRepo.purgeMutedWords()
         publishMuteList()
     }
 

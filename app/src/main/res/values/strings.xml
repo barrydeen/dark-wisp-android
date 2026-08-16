@@ -541,6 +541,7 @@
     <string name="settings_private_key_copied_autoclear">Private key copied. Clipboard clears in 60 seconds.</string>
     <string name="settings_authenticate_view_key">Authenticate to view your private key</string>
     <string name="settings_auth_failed">Authentication failed: %s</string>
+    <string name="settings_reveal_requires_lock">Set up a screen lock (PIN, pattern, or biometric) to reveal your private key.</string>
     <string name="settings_never_share_key">Never share your private key. Anyone with your nsec has full control of your account.</string>
     <string name="settings_muted_words_description">Notes containing these words will be hidden from your feed.</string>
     <string name="settings_no_muted_users">No muted users</string>

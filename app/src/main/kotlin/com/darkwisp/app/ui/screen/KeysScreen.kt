@@ -51,6 +51,7 @@ import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.hexToByteArray
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.SigningMode
+import com.darkwisp.app.ui.component.SecureWindow
 
 private const val NSEC_CLIPBOARD_CLEAR_MS = 60_000L
 
@@ -81,6 +82,10 @@ fun KeysScreen(
 
     val revealPrivateKeyTitle = stringResource(R.string.btn_reveal_private_key)
     val revealPrivateKeyDescription = stringResource(R.string.settings_authenticate_view_key)
+
+    // This screen can display the private key — block screenshots, screen
+    // recording, and the recents thumbnail while it is visible.
+    SecureWindow()
 
     // Clear nsec from memory when the composable leaves composition
     DisposableEffect(Unit) {
@@ -250,11 +255,17 @@ fun KeysScreen(
                                     ?: return@Button
 
                                 val biometricManager = BiometricManager.from(context)
-                                val canAuth = biometricManager.canAuthenticate(
+                                val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
                                     BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                                )
+                                val canAuth = biometricManager.canAuthenticate(authenticators)
                                 if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-                                    keypair?.let { nsec = Nip19.nsecEncode(it.privkey) }
+                                    // Never reveal the key without authentication — require a
+                                    // screen lock instead of falling through.
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.settings_reveal_requires_lock),
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                     return@Button
                                 }
 
@@ -276,7 +287,7 @@ fun KeysScreen(
                                 val promptInfo = BiometricPrompt.PromptInfo.Builder()
                                     .setTitle(revealPrivateKeyTitle)
                                     .setDescription(revealPrivateKeyDescription)
-                                    .setAllowedAuthenticators(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                                    .setAllowedAuthenticators(authenticators)
                                     .build()
 
                                 BiometricPrompt(activity, executor, callback).authenticate(promptInfo)

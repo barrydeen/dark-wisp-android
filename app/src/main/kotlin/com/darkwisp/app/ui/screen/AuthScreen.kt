@@ -67,6 +67,7 @@ import com.darkwisp.app.R
 import com.darkwisp.app.nostr.RemoteSignerBridge
 import com.darkwisp.app.nostr.toHex
 import com.darkwisp.app.ui.component.NsecPasteGuard
+import com.darkwisp.app.ui.component.SecureWindow
 import com.darkwisp.app.ui.component.TorCornerButton
 import com.darkwisp.app.viewmodel.AuthViewModel
 
@@ -81,6 +82,10 @@ fun AuthScreen(
     val nsecInput by viewModel.nsecInput.collectAsState()
     val error by viewModel.error.collectAsState()
     var nsecVisible by remember { mutableStateOf(false) }
+
+    // An nsec can be typed and made visible here — block screenshots, screen
+    // recording, and the recents thumbnail while this screen is up.
+    SecureWindow()
     val signerAvailable = remember { RemoteSignerBridge.isSignerAvailable(context) }
 
     // Track when signer login completes so we can navigate after the composable

@@ -191,6 +191,7 @@ import com.darkwisp.app.viewmodel.RestoreFromRelayStatus
 import com.darkwisp.app.viewmodel.WalletPage
 import com.darkwisp.app.viewmodel.WalletState
 import com.darkwisp.app.viewmodel.WalletViewModel
+import com.darkwisp.app.repo.TransactionStatus
 
 // Full-screen wallet bottom sheets (Transactions, Send, Receive) expand all
 // the way to the top of the window — push the grab handle below the status
@@ -3206,12 +3207,20 @@ private fun TransactionRow(
                 overflow = TextOverflow.Ellipsis
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (tx.pending) {
+                // A failed payment needs its own label: without one it
+                // reads as an ordinary completed row, i.e. as sats spent.
+                val statusLabel = when (tx.status) {
+                    TransactionStatus.PENDING -> stringResource(R.string.wallet_tx_pending)
+                    TransactionStatus.FAILED -> stringResource(R.string.wallet_tx_failed)
+                    TransactionStatus.COMPLETED -> null
+                }
+                if (statusLabel != null) {
                     Text(
-                        stringResource(R.string.wallet_tx_pending),
+                        statusLabel,
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
-                        color = WispThemeColors.zapColor
+                        color = if (tx.failed) MaterialTheme.colorScheme.error
+                        else WispThemeColors.zapColor
                     )
                     Text(
                         " · ",
@@ -3354,7 +3363,14 @@ private fun TransactionDetailPanel(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        TxDetailRow("Status", if (tx.pending) "Pending" else "Completed")
+        TxDetailRow(
+            "Status",
+            when (tx.status) {
+                TransactionStatus.PENDING -> "Pending"
+                TransactionStatus.COMPLETED -> "Completed"
+                TransactionStatus.FAILED -> "Failed — not sent"
+            }
+        )
         TxDetailRow("Type", if (tx.isOnchain) "On-chain" else "Lightning")
         TxDetailRow("Amount", "%,d sats".format(sats))
         if (tx.feeMsats > 0) TxDetailRow("Network fee", "%,d sats".format(feeSats))

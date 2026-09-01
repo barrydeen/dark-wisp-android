@@ -22,7 +22,7 @@ mlkit-language-id = "17.0.6"
 mlkit-barcode = "17.3.0"
 camerax = "1.4.1"
 objectbox = "5.2.0"
-breez-sdk-spark = "0.11.0"
+breez-sdk-spark = "0.14.0"
 # 2.4.x is the newest kmp-tor line compiled with Kotlin 2.1 — 2.5.0+ requires
 # Kotlin 2.2 metadata, unreadable by this project's Kotlin 2.0.21.
 kmp-tor-runtime = "2.4.0"

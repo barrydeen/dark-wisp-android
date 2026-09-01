@@ -64,13 +64,12 @@ fun PaymentTargetSheet(target: NipA3.PaymentTarget, onDismiss: () -> Unit) {
                 .padding(bottom = 32.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                NipA3.symbol(target.type)?.let { symbol ->
-                    Text(
-                        text = symbol,
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
+                PaymentTargetGlyph(
+                    type = target.type,
+                    size = 22.dp,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 Text(
                     text = NipA3.displayName(target.type),
                     style = MaterialTheme.typography.titleLarge

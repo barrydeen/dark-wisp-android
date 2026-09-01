@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- cryptocurrency-icons (spothq), CC0-1.0. Glyph only, no disc; tint at call site.
+     Arc flags expanded: Android PathParser rejects SVG packed-flag shorthand. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="nonZero"
+        android:pathData="M 9.925 19.687 a 0.59 0.59 0 0 1 0.415 -0.17 h 14.366 a 0.29 0.29 0 0 1 0.207 0.497 l -2.838 2.815 a 0.59 0.59 0 0 1 -0.415 0.171 H 7.294 a 0.291 0.291 0 0 1 -0.207 -0.498 l 2.838 -2.815 z m 0 -10.517 A 0.59 0.59 0 0 1 10.34 9 h 14.366 c 0.261 0 0.392 0.314 0.207 0.498 l -2.838 2.815 a 0.59 0.59 0 0 1 -0.415 0.17 H 7.294 a 0.291 0.291 0 0 1 -0.207 -0.497 L 9.925 9.17 z m 12.15 5.225 a 0.59 0.59 0 0 0 -0.415 -0.17 H 7.294 a 0.291 0.291 0 0 0 -0.207 0.498 l 2.838 2.815 c 0.11 0.109 0.26 0.17 0.415 0.17 h 14.366 a 0.291 0.291 0 0 0 0.207 -0.498 l -2.838 -2.815 z" />
+</vector>

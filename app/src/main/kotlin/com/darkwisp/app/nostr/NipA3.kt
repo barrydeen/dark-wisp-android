@@ -15,22 +15,32 @@ object NipA3 {
 
     data class PaymentTarget(val type: String, val authority: String)
 
-    data class TargetStyle(val displayName: String, val symbol: String?, val ticker: String?)
+    data class TargetStyle(val displayName: String, val ticker: String?)
 
-    /** Recognized types from the NIP-A3 stylization table. */
+    /**
+     * Types the UI styles and offers as quick-pick chips. The first group is the
+     * NIP-A3 "Commonly Used Tags" list; the second is our own additions, which the
+     * spec allows since unrecognized types stay valid and fall back to payto://.
+     * Display names and tickers are ours — the spec prescribes no stylization.
+     * Visual marks live in PaymentTargetGlyph, not here (protocol layer stays UI-free).
+     */
     val RECOGNIZED: Map<String, TargetStyle> = mapOf(
-        "bitcoin" to TargetStyle("Bitcoin", "₿", "BTC"),
-        "cashme" to TargetStyle("Cash App", "$", null),
-        "ethereum" to TargetStyle("Ethereum", "Ξ", "ETH"),
-        "lightning" to TargetStyle("Lightning", "⚡", "LBTC"),
-        "monero" to TargetStyle("Monero", "ɱ", "XMR"),
-        "nano" to TargetStyle("Nano", "Ӿ", "XNO"),
-        "revolut" to TargetStyle("Revolut", null, null),
-        "venmo" to TargetStyle("Venmo", "$", null),
-        "bitcoincash" to TargetStyle("Bitcoin Cash", "₿", "BCH"),
-        "dash" to TargetStyle("Dash", "Đ", "DASH"),
-        "litecoin" to TargetStyle("Litecoin", "Ł", "LTC"),
-        "zcash" to TargetStyle("Zcash", "Z", "ZEC")
+        "lightning" to TargetStyle("Lightning", "LBTC"),
+        "bitcoin" to TargetStyle("Bitcoin", "BTC"),
+        "bip352" to TargetStyle("Silent Payments", null),
+        "bip353" to TargetStyle("DNS Address", null),
+        "monero" to TargetStyle("Monero", "XMR"),
+        "ethereum" to TargetStyle("Ethereum", "ETH"),
+        "solana" to TargetStyle("Solana", "SOL"),
+        "litecoin" to TargetStyle("Litecoin", "LTC"),
+        "zcash" to TargetStyle("Zcash", "ZEC"),
+        "bitcoincash" to TargetStyle("Bitcoin Cash", "BCH"),
+        "dash" to TargetStyle("Dash", "DASH"),
+        "nano" to TargetStyle("Nano", "XNO"),
+        "cashme" to TargetStyle("Cash App", null),
+        "paypal" to TargetStyle("PayPal", null),
+        "revolut" to TargetStyle("Revolut", null),
+        "venmo" to TargetStyle("Venmo", null)
     )
 
     private val TYPE_REGEX = Regex("^[a-z0-9-]+$")
@@ -45,6 +55,7 @@ object NipA3 {
         "litecoin" to "litecoin:",
         "monero" to "monero:",
         "nano" to "nano:",
+        "solana" to "solana:",
         "zcash" to "zcash:"
     )
 
@@ -87,7 +98,58 @@ object NipA3 {
     fun displayName(type: String): String =
         RECOGNIZED[type]?.displayName ?: type.replaceFirstChar { it.uppercase() }
 
-    fun symbol(type: String): String? = RECOGNIZED[type]?.symbol
-
     fun ticker(type: String): String? = RECOGNIZED[type]?.ticker
+
+    /** Result of decoding a scanned QR payload. [type] is null when the payload
+     *  carried no scheme, in which case only the address could be recovered. */
+    data class ScanResult(val type: String?, val authority: String)
+
+    /** scheme (without ":") -> payto type, derived from [NATIVE_SCHEMES]. */
+    private val SCHEME_TO_TYPE: Map<String, String> =
+        NATIVE_SCHEMES.entries.associate { (type, scheme) -> scheme.removeSuffix(":") to type }
+
+    private val SCHEME_REGEX = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*):(.*)$", RegexOption.DOT_MATCHES_ALL)
+
+    /** Schemes that are never payment types. Scanning a website or profile QR by
+     *  mistake should surface the raw payload, not invent a "https"/"nostr" type. */
+    private val NON_PAYMENT_SCHEMES = setOf("http", "https", "nostr", "mailto", "tel", "sms", "geo")
+
+    /**
+     * Decode a scanned QR payload into a type + address.
+     *
+     * Handles `payto://<type>/<address>` (RFC-8905), native wallet schemes
+     * (`bitcoin:`, `monero:`, ...) and bare addresses. Query strings such as
+     * `?amount=` are dropped, since a payment target stores only the address.
+     */
+    fun parseScannedUri(raw: String): ScanResult {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ScanResult(null, "")
+
+        // payto://<type>/<address>
+        val paytoPrefix = "payto://"
+        if (trimmed.regionMatches(0, paytoPrefix, 0, paytoPrefix.length, ignoreCase = true)) {
+            val rest = trimmed.substring(paytoPrefix.length).substringBefore('?').substringBefore('#')
+            val type = normalizeType(rest.substringBefore('/'))
+            val authority = rest.substringAfter('/', "").let {
+                try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { it }
+            }
+            return ScanResult(type, authority)
+        }
+
+        val match = SCHEME_REGEX.find(trimmed)
+        if (match != null) {
+            val scheme = match.groupValues[1].lowercase()
+            // Strip an authority-style "//" prefix, then any query/fragment.
+            val body = match.groupValues[2]
+                .removePrefix("//")
+                .substringBefore('?')
+                .substringBefore('#')
+            if (scheme in NON_PAYMENT_SCHEMES) return ScanResult(null, trimmed)
+            val type = SCHEME_TO_TYPE[scheme] ?: normalizeType(scheme)
+            return ScanResult(type, body)
+        }
+
+        // Bare address — the caller keeps whichever type is already selected.
+        return ScanResult(null, trimmed.substringBefore('?'))
+    }
 }

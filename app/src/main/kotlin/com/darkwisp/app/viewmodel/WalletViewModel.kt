@@ -128,7 +128,6 @@ sealed class WalletPage {
     data class ReceiveSuccess(val amountSats: Long) : WalletPage()
     object Transactions : WalletPage()
     object Settings : WalletPage()
-    object PaymentTargets : WalletPage()
     object LightningAddressSetup : WalletPage()
     object LightningAddressQR : WalletPage()
     object DeleteWalletConfirm : WalletPage()
@@ -469,11 +468,14 @@ class WalletViewModel(
             _paymentTargetsError.value = "Enter a valid address"
             return false
         }
-        val target = NipA3.PaymentTarget(type, trimmedAuthority)
-        if (target in _paymentTargets.value) {
-            _paymentTargetsError.value = "That payment target is already in the list"
+        // One address per type: replacing an address means removing the existing
+        // entry first, so a stale address can never linger alongside its successor.
+        if (_paymentTargets.value.any { it.type == type }) {
+            _paymentTargetsError.value =
+                "You already have a ${NipA3.displayName(type)} address. Remove it before adding another."
             return false
         }
+        val target = NipA3.PaymentTarget(type, trimmedAuthority)
         _paymentTargetsError.value = null
         _paymentTargets.value = _paymentTargets.value + target
         _paymentTargetsDirty.value = true

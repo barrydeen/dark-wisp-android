@@ -468,6 +468,11 @@ class WalletViewModel(
             _paymentTargetsError.value = "Enter a valid address"
             return false
         }
+        if (type == "lightning" && !NipA3.isReusableLightningTarget(trimmedAuthority)) {
+            _paymentTargetsError.value =
+                "Enter a Lightning address like you@example.com \u2014 invoices and LNURL expire or aren't reusable."
+            return false
+        }
         // One address per type: replacing an address means removing the existing
         // entry first, so a stale address can never linger alongside its successor.
         if (_paymentTargets.value.any { it.type == type }) {

@@ -115,12 +115,61 @@ object NipA3 {
     private val NON_PAYMENT_SCHEMES = setOf("http", "https", "nostr", "mailto", "tel", "sms", "geo")
 
     /**
+     * Bitcoin has several address formats that all travel under the `bitcoin:`
+     * scheme (or bare), so the scheme alone can't tell them apart. Recognize the
+     * ones with unambiguous shapes:
+     *  - BIP-352 silent payments are bech32m with an `sp` HRP (`tsp` on testnet)
+     *  - BIP-353 DNS instructions are a ₿-prefixed name, e.g. ₿alice@example.com
+     */
+    private const val BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+    /**
+     * A silent payments address is bech32m over two 33-byte keys, so it runs ~110
+     * characters of bech32 charset. Checking shape and length — not just the "sp1"
+     * prefix — keeps a base58 address from another chain that happens to begin
+     * "sp1" from being misread as one.
+     */
+    private fun isSilentPaymentAddress(authority: String): Boolean {
+        val lower = authority.trim().lowercase()
+        val body = when {
+            lower.startsWith("tsp1") -> lower.removePrefix("tsp1")
+            lower.startsWith("sp1") -> lower.removePrefix("sp1")
+            else -> return false
+        }
+        return body.length >= 60 && body.all { it in BECH32_CHARSET }
+    }
+
+    private fun bitcoinFormatFor(authority: String): String? {
+        val a = authority.trim()
+        return when {
+            isSilentPaymentAddress(a) -> "bip352"
+            a.startsWith("\u20BF") && '@' in a -> "bip353"
+            else -> null
+        }
+    }
+
+    /**
+     * BOLT11 invoices expire and LNURL is a callback, not an address, so neither
+     * belongs in a replaceable target list. A BIP-21 unified QR carries an invoice
+     * alongside the on-chain address, which makes this easy to scan by accident.
+     */
+    fun isReusableLightningTarget(authority: String): Boolean {
+        val a = authority.trim().lowercase()
+        return !a.startsWith("lnbc") && !a.startsWith("lntb") &&
+            !a.startsWith("lnbcrt") && !a.startsWith("lnurl")
+    }
+
+    /**
      * Decode a scanned QR payload into a type + address.
      *
      * Handles `payto://<type>/<address>` (RFC-8905), native wallet schemes
      * (`bitcoin:`, `monero:`, ...) and bare addresses. Query strings such as
      * `?amount=` are dropped, since a payment target stores only the address.
      */
+    /** Only overrides an unset or plain-bitcoin type; an explicit type is respected. */
+    private fun refineType(type: String?, authority: String): String? =
+        if (type == null || type == "bitcoin") bitcoinFormatFor(authority) ?: type else type
+
     fun parseScannedUri(raw: String): ScanResult {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return ScanResult(null, "")
@@ -133,7 +182,7 @@ object NipA3 {
             val authority = rest.substringAfter('/', "").let {
                 try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { it }
             }
-            return ScanResult(type, authority)
+            return ScanResult(refineType(type, authority), authority)
         }
 
         val match = SCHEME_REGEX.find(trimmed)
@@ -146,10 +195,12 @@ object NipA3 {
                 .substringBefore('#')
             if (scheme in NON_PAYMENT_SCHEMES) return ScanResult(null, trimmed)
             val type = SCHEME_TO_TYPE[scheme] ?: normalizeType(scheme)
-            return ScanResult(type, body)
+            return ScanResult(refineType(type, body), body)
         }
 
-        // Bare address — the caller keeps whichever type is already selected.
-        return ScanResult(null, trimmed.substringBefore('?'))
+        // Bare address — the caller keeps whichever type is already selected,
+        // unless the address shape itself identifies a Bitcoin format.
+        val bare = trimmed.substringBefore('?')
+        return ScanResult(refineType(null, bare), bare)
     }
 }

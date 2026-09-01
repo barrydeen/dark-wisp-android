@@ -1521,14 +1521,19 @@ private fun ProfileHeader(
             }
         }
 
-        // NIP-A3 payment targets — icon + name only; the raw address (often a
-        // long Monero string or noffer) is shown and copyable in the sheet that
-        // opens on tap, so it stays off the profile to keep it readable.
-        // CLINK offers are dropped here: they're already payable via the
-        // profile's dedicated pay button, so listing them again is redundant.
-        paymentTargets.filterNot {
+        // NIP-A3 payment targets. CLINK offers are dropped here: they're already
+        // payable via the profile's dedicated pay button, so listing them again
+        // is redundant.
+        val visibleTargets = paymentTargets.filterNot {
             it.type.equals("clink", ignoreCase = true) || it.authority.startsWith("noffer1", ignoreCase = true)
-        }.forEach { target ->
+        }
+        // Lightning keeps a full-width row so its address can be shown inline —
+        // it's short and human-readable, unlike a 95-char Monero string.
+        val (lightningTargets, gridTargets) = visibleTargets.partition {
+            it.type.equals("lightning", ignoreCase = true)
+        }
+
+        lightningTargets.forEach { target ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -1538,10 +1543,10 @@ private fun ProfileHeader(
                     .padding(vertical = 10.dp)
             ) {
                 Box(modifier = Modifier.width(24.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = NipA3.symbol(target.type) ?: "¤",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFFFC107)
+                    com.darkwisp.app.ui.component.PaymentTargetGlyph(
+                        type = target.type,
+                        size = 16.dp,
+                        tint = Color(0xFFFFC107)
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -1550,6 +1555,48 @@ private fun ProfileHeader(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = target.authority,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // Remaining coins in 3 columns — icon + name only; the raw address is
+        // shown and copyable in the sheet that opens on tap.
+        gridTargets.chunked(3).forEach { rowTargets ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                rowTargets.forEach { target ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onPaymentTargetClick(target) }
+                            .padding(vertical = 10.dp, horizontal = 2.dp)
+                    ) {
+                        com.darkwisp.app.ui.component.PaymentTargetGlyph(
+                            type = target.type,
+                            size = 16.dp,
+                            tint = Color(0xFFFFC107)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = NipA3.displayName(target.type),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                // Keep column widths stable when the last row is short.
+                repeat(3 - rowTargets.size) { Spacer(Modifier.weight(1f)) }
             }
         }
 

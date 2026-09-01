@@ -875,10 +875,9 @@ private fun PaymentTargetsOnlyDialog(
 
 @Composable
 private fun PaymentTargetChip(target: NipA3.PaymentTarget, onClick: () -> Unit) {
-    val label = buildString {
-        NipA3.symbol(target.type)?.let { append(it).append(' ') }
-        append(NipA3.displayName(target.type))
-    }
+    // PresetPill takes a plain string, so no glyph here — the display name
+    // alone is unambiguous and avoids reintroducing lookalike Unicode symbols.
+    val label = NipA3.displayName(target.type)
     PresetPill(
         label = label,
         selected = false,

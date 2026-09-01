@@ -128,7 +128,6 @@ sealed class WalletPage {
     data class ReceiveSuccess(val amountSats: Long) : WalletPage()
     object Transactions : WalletPage()
     object Settings : WalletPage()
-    object PaymentTargets : WalletPage()
     object LightningAddressSetup : WalletPage()
     object LightningAddressQR : WalletPage()
     object DeleteWalletConfirm : WalletPage()
@@ -469,11 +468,19 @@ class WalletViewModel(
             _paymentTargetsError.value = "Enter a valid address"
             return false
         }
-        val target = NipA3.PaymentTarget(type, trimmedAuthority)
-        if (target in _paymentTargets.value) {
-            _paymentTargetsError.value = "That payment target is already in the list"
+        if (type == "lightning" && !NipA3.isReusableLightningTarget(trimmedAuthority)) {
+            _paymentTargetsError.value =
+                "Enter a Lightning address like you@example.com \u2014 invoices and LNURL expire or aren't reusable."
             return false
         }
+        // One address per type: replacing an address means removing the existing
+        // entry first, so a stale address can never linger alongside its successor.
+        if (_paymentTargets.value.any { it.type == type }) {
+            _paymentTargetsError.value =
+                "You already have a ${NipA3.displayName(type)} address. Remove it before adding another."
+            return false
+        }
+        val target = NipA3.PaymentTarget(type, trimmedAuthority)
         _paymentTargetsError.value = null
         _paymentTargets.value = _paymentTargets.value + target
         _paymentTargetsDirty.value = true
@@ -485,25 +492,38 @@ class WalletViewModel(
         _paymentTargetsDirty.value = true
     }
 
-    fun publishPaymentTargets(): Boolean {
+    /**
+     * Signs and publishes the kind 10133 event. Suspends until at least one relay
+     * returns a NIP-20 OK, so the caller can report a truthful result: the previous
+     * version returned true the moment the coroutine was launched, which said
+     * nothing about whether the event actually reached a relay.
+     */
+    suspend fun publishPaymentTargets(): Boolean {
         val s = getSigner() ?: keyRepo.getKeypair()?.let { LocalSigner(it.privkey, it.pubkey) } ?: return false
         return try {
-            viewModelScope.launch {
-                val event = s.signEvent(
-                    kind = NipA3.KIND,
-                    content = "",
-                    tags = NipA3.buildTags(_paymentTargets.value)
-                )
-                val msg = ClientMessage.event(event)
+            val event = s.signEvent(
+                kind = NipA3.KIND,
+                content = "",
+                tags = NipA3.buildTags(_paymentTargets.value)
+            )
+            val msg = ClientMessage.event(event)
+            val outcome = relayPool.publishWithConfirmation(event.id) {
                 relayPool.sendToWriteRelays(msg)
-                for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
-                    relayPool.sendToRelayOrEphemeral(url, msg)
-                }
+            }
+            for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
+                relayPool.sendToRelayOrEphemeral(url, msg)
+            }
+            if (outcome.confirmed) {
                 paymentTargetRepo?.updateFromEvent(event)
                 _paymentTargetsDirty.value = false
+                _paymentTargetsError.value = null
+                true
+            } else {
+                _paymentTargetsError.value = "No relay confirmed the update. Try again."
+                false
             }
-            true
         } catch (_: Exception) {
+            _paymentTargetsError.value = "Could not publish payment targets."
             false
         }
     }

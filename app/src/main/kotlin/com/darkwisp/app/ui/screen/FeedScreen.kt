@@ -181,6 +181,7 @@ fun FeedScreen(
     onSocialGraph: () -> Unit = {},
     onSafety: () -> Unit = {},
     onCustomEmojis: () -> Unit = {},
+    onPaymentTargets: () -> Unit = {},
     onConsole: () -> Unit = {},
     onRelayHealth: () -> Unit = {},
     onKeys: () -> Unit = {},
@@ -796,6 +797,10 @@ fun FeedScreen(
                 onCustomEmojis = {
                     scope.launch { drawerState.close() }
                     onCustomEmojis()
+                },
+                onPaymentTargets = {
+                    scope.launch { drawerState.close() }
+                    onPaymentTargets()
                 },
                 onKeys = {
                     scope.launch { drawerState.close() }

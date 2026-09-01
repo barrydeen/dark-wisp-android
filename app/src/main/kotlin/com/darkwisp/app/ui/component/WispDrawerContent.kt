@@ -25,7 +25,7 @@ import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.ui.res.painterResource
 import com.darkwisp.app.R
-import androidx.compose.material.icons.outlined.CurrencyBitcoin
+import androidx.compose.material.icons.outlined.TrackChanges
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.FormatListBulleted
@@ -110,6 +110,7 @@ fun WispDrawerContent(
     onSafety: () -> Unit = {},
     onPowSettings: () -> Unit = {},
     onCustomEmojis: () -> Unit = {},
+    onPaymentTargets: () -> Unit = {},
     onConsole: () -> Unit = {},
     onRelayHealth: () -> Unit = {},
     onRelaySettings: () -> Unit,
@@ -611,6 +612,13 @@ fun WispDrawerContent(
                     label = { Text(stringResource(R.string.drawer_custom_emojis)) },
                     selected = false,
                     onClick = onCustomEmojis,
+                    modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
+                )
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Outlined.TrackChanges, contentDescription = null) },
+                    label = { Text(stringResource(R.string.drawer_payment_targets)) },
+                    selected = false,
+                    onClick = onPaymentTargets,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(

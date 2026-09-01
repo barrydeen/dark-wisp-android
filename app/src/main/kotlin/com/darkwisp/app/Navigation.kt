@@ -74,6 +74,7 @@ import com.darkwisp.app.ui.screen.UserProfileScreen
 import com.darkwisp.app.ui.screen.ConsoleScreen
 import com.darkwisp.app.ui.screen.RelayHealthScreen
 import com.darkwisp.app.ui.screen.CustomEmojiScreen
+import com.darkwisp.app.ui.screen.PaymentTargetsScreen
 import com.darkwisp.app.ui.screen.SearchScreen
 import com.darkwisp.app.ui.screen.SocialGraphScreen
 import com.darkwisp.app.ui.screen.BookmarkSetScreen
@@ -164,6 +165,7 @@ object Routes {
     const val ONBOARDING_FIRST_POST = "onboarding/first-post"
     const val RELAY_DETAIL = "relay_detail/{relayUrl}"
     const val CUSTOM_EMOJIS = "custom_emojis"
+    const val PAYMENT_TARGETS = "payment_targets"
     const val HASHTAG_FEED = "hashtag/{tag}"
     const val HASHTAG_SET_FEED = "hashtag_set/{name}/{tags}"
     const val EXISTING_USER_ONBOARDING = "onboarding/existing"
@@ -930,6 +932,9 @@ fun WispNavHost(
                 },
                 onCustomEmojis = {
                     navController.navigate(Routes.CUSTOM_EMOJIS)
+                },
+                onPaymentTargets = {
+                    navController.navigate(Routes.PAYMENT_TARGETS)
                 },
                 onConsole = {
                     navController.navigate(Routes.CONSOLE)
@@ -2826,6 +2831,24 @@ fun WispNavHost(
                 interfacePrefs = interfacePrefs,
                 onBack = { navController.popBackStack() },
                 onChanged = onInterfaceChanged
+            )
+        }
+
+        composable(Routes.PAYMENT_TARGETS) {
+            // State stays on WalletViewModel (already app-scoped above) so the
+            // publish path is unchanged; only the entry point moved to Settings.
+            PaymentTargetsScreen(
+                targets = walletViewModel.paymentTargets.collectAsState().value,
+                isLoading = walletViewModel.paymentTargetsLoading.collectAsState().value,
+                error = walletViewModel.paymentTargetsError.collectAsState().value,
+                isDirty = walletViewModel.paymentTargetsDirty.collectAsState().value,
+                onLoad = { walletViewModel.loadPaymentTargets() },
+                onAdd = { type, authority -> walletViewModel.addPaymentTarget(type, authority) },
+                onRemove = { walletViewModel.removePaymentTarget(it) },
+                onSave = { walletViewModel.publishPaymentTargets() },
+                onBack = { navController.popBackStack() },
+                profileLightningAddress = feedViewModel.getUserPubkey()
+                    ?.let { feedViewModel.profileRepo.get(it)?.lud16 }
             )
         }
 

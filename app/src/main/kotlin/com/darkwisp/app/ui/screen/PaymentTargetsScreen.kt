@@ -1,5 +1,8 @@
 package com.darkwisp.app.ui.screen
 
+import android.widget.Toast
+import kotlinx.coroutines.launch
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,9 +43,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
@@ -70,7 +75,7 @@ fun PaymentTargetsScreen(
     onLoad: () -> Unit,
     onAdd: (type: String, authority: String) -> Boolean,
     onRemove: (NipA3.PaymentTarget) -> Unit,
-    onSave: () -> Unit,
+    onSave: suspend () -> Boolean,
     onBack: () -> Unit,
     /** The profile's kind-0 lud16, if set. Used to warn that a Lightning payto
      *  target duplicates the zap address NIP-57 clients already use. */
@@ -79,6 +84,9 @@ fun PaymentTargetsScreen(
     var typeInput by remember { mutableStateOf("") }
     var authorityInput by remember { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
+    var publishing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     // Declared here (not beside the dropdown) because the QR handler sets it too.
     var customType by remember { mutableStateOf(false) }
 
@@ -376,11 +384,30 @@ fun PaymentTargetsScreen(
             Spacer(Modifier.height(24.dp))
 
             Button(
-                onClick = onSave,
-                enabled = isDirty,
+                onClick = {
+                    publishing = true
+                    scope.launch {
+                        val ok = onSave()
+                        publishing = false
+                        Toast.makeText(
+                            context,
+                            if (ok) "Payment targets published" else "Could not publish \u2014 no relay confirmed",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                enabled = isDirty && !publishing,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Save & Publish")
+                if (publishing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Save & Publish")
+                }
             }
 
             Spacer(Modifier.height(32.dp))

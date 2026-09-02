@@ -60,7 +60,7 @@
     <string name="auth_login_with_signer">Iniciar sesión con Firmador</string>
     <string name="auth_or_log_in_with_key">O inicia sesión con tu clave</string>
     <string name="auth_nsec_or_npub">nsec o npub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">una pequeña interfaz para desplazarte por publicaciones</string>
     <string name="auth_hide_key">Ocultar clave</string>
     <string name="auth_show_key">Mostrar clave</string>

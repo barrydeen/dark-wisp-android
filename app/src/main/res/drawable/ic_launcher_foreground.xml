@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground — the wisp glyph wearing pixel shades.
+
+  Pure vector, 1024-unit viewport. The art is 729x768 (wider than the
+  bare glyph, since the shades overhang to the left), placed by the inner
+  group's translate so its centre lands on the canvas centre.
+
+  The radial gradient is approximated as a circular one — the source SVG
+  used an elliptical / rotated gradient (gradientTransform matrix) which
+  AAPT vector drawables don't support, but the visual difference at
+  launcher-icon sizes is negligible.
+
+  The source SVG clipped the shades to a rect; measured against the path
+  bounds that clip is a no-op, so it is dropped here.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!--
+      Group transform shrinks the mark inside the 108dp foreground canvas
+      so the launcher's mask (circle / squircle / rounded square) doesn't
+      crop it. Kept at the same 0.65 as the bare glyph: measured, the
+      shades reach 563 of the 626-unit safe-zone diameter, so the extra
+      width needs no rescale.
+    -->
+    <group
+        android:scaleX="0.65"
+        android:scaleY="0.65"
+        android:pivotX="512"
+        android:pivotY="512">
+        <group
+            android:translateX="146.484"
+            android:translateY="126.976">
+            <path android:fillType="evenOdd" android:pathData="M351.197 768C183.146 767.997 46.9861 632.139 46.9858 464.64C46.9858 353.702 106.711 256.661 195.849 203.762C209.902 195.228 224.194 188.295 238.605 182.732C273.434 168.886 311.43 161.28 351.197 161.28C360.01 161.28 368.736 161.669 377.35 162.401C398.404 163.078 415.437 167.497 432.765 171.977C450.117 176.463 467.873 181.044 490.936 182.451C533.636 185.054 565.023 162.667 577.969 131.365C590.93 100.022 585.576 59.2324 553.362 24.915C548.383 19.6106 548.312 12.151 550.78 7.00963C552.036 4.39318 554.16 1.92861 557.172 0.725019C560.362 -0.548122 563.88 -0.13135 567.115 1.87142C676.72 69.7387 736.192 216.691 728.304 364.697C720.403 512.896 644.939 663.233 483.324 737.93C443.362 757.177 398.544 768 351.197 768Z">
+                <aapt:attr name="android:fillColor">
+                    <gradient
+                        android:type="radial"
+                        android:centerX="333.608"
+                        android:centerY="245.446"
+                        android:gradientRadius="530">
+                        <item android:offset="0" android:color="#FFBA60"/>
+                        <item android:offset="0.961823" android:color="#E97941"/>
+                    </gradient>
+                </aapt:attr>
+            </path>
+            <path android:fillColor="#000000" android:pathData="M0 360.024H617V384.624H0V360.024ZM0 384.624H172.76V409.224H0V384.624ZM197.44 384.624H222.12V409.224H197.44V384.624ZM246.8 384.624H271.48V433.824H246.8V384.624ZM320.84 384.624H493.6V409.224H320.84V384.624ZM518.28 384.624H542.96V409.224H518.28V384.624ZM567.64 384.624H617V409.224H567.64V384.624ZM24.68 409.224H148.08V433.824H24.68V409.224ZM172.76 409.224H197.44V433.824H172.76V409.224ZM222.12 409.224H246.8V458.424H222.12V409.224ZM320.84 409.224H468.92V433.824H320.84V409.224ZM493.6 409.224H518.28V433.824H493.6V409.224ZM542.96 409.224H592.32V433.824H542.96V409.224ZM49.36 433.824H123.4V458.424H49.36V433.824ZM148.08 433.824H172.76V483.024H148.08V433.824ZM197.44 433.824H222.12V483.024H197.44V433.824ZM345.52 433.824H444.24V458.424H345.52V433.824ZM468.92 433.824H493.6V483.024H468.92V433.824ZM518.28 433.824H567.64V458.424H518.28V433.824ZM74.04 458.424H148.08V483.024H74.04V458.424ZM172.76 458.424H197.44V483.024H172.76V458.424ZM370.2 458.424H468.92V483.024H370.2V458.424ZM493.6 458.424H542.96V483.024H493.6V458.424Z"/>
+            <path android:fillColor="#50524F" android:pathData="M172.76 384.624H197.44V409.224H172.76V384.624ZM222.12 384.624H246.8V409.224H222.12V384.624ZM493.6 384.624H518.28V409.224H493.6V384.624ZM542.96 384.624H567.64V409.224H542.96V384.624ZM148.08 409.224H172.76V433.824H148.08V409.224ZM197.44 409.224H222.12V433.824H197.44V409.224ZM468.92 409.224H493.6V433.824H468.92V409.224ZM518.28 409.224H542.96V433.824H518.28V409.224ZM123.4 433.824H148.08V458.424H123.4V433.824ZM172.76 433.824H197.44V458.424H172.76V433.824ZM444.24 433.824H468.92V458.424H444.24V433.824ZM493.6 433.824H518.28V458.424H493.6V433.824Z"/>
+            <path android:fillColor="#000000" android:pathData="M225,529.024h142v35h-142z"/>
+        </group>
+    </group>
+</vector>

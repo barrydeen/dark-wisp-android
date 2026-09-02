@@ -141,6 +141,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.objectbox.android)
     implementation(libs.objectbox.kotlin)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.breez.sdk.spark)
     implementation(libs.kmp.tor.runtime)
     implementation(libs.kmp.tor.runtime.service.ui)

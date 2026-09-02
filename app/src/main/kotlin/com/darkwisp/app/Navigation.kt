@@ -342,6 +342,51 @@ fun WispNavHost(
         }
     }
 
+    // Post-authentication routing, shared by the sign-in sheet on SPLASH and
+    // the AUTH route. Pops to 0 rather than to AUTH so it lands correctly
+    // whichever screen the sign-in happened on.
+    val onAuthCompleted: (Boolean) -> Unit = { isNewAccount ->
+        val wasAddingAccount = authViewModel.isAddingAccount
+        authViewModel.isAddingAccount = false
+
+        if (isNewAccount) {
+            // New key generation always goes through full onboarding
+            navController.navigate(Routes.ONBOARDING_PROFILE)
+        } else if (wasAddingAccount && authViewModel.keyRepo.isOnboardingComplete()) {
+            // Adding an existing account that already completed onboarding — skip straight to loading
+            feedViewModel.reloadForNewAccount()
+            relayViewModel.reload()
+            blossomServersViewModel.reload()
+            composeViewModel.reloadBlossomRepo()
+            feedViewModel.initRelays()
+            walletViewModel.refreshState()
+            navController.navigate(Routes.LOADING) {
+                popUpTo(0) { inclusive = true }
+            }
+        } else if (authViewModel.keyRepo.isReadOnly()) {
+            feedViewModel.reloadForNewAccount()
+            relayViewModel.reload()
+            feedViewModel.initRelays()
+            authViewModel.keyRepo.markOnboardingComplete()
+            navController.navigate(Routes.LOADING) {
+                popUpTo(0) { inclusive = true }
+            }
+        } else {
+            feedViewModel.reloadForNewAccount()
+            relayViewModel.reload()
+            blossomServersViewModel.reload()
+            composeViewModel.reloadBlossomRepo()
+            // Start relay connections immediately so TCP/TLS handshakes
+            // run in parallel with the onboarding welcome animation
+            feedViewModel.initRelays()
+            walletViewModel.refreshState()
+            authViewModel.keyRepo.markOnboardingComplete()
+            navController.navigate(Routes.EXISTING_USER_ONBOARDING) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
     val onEnterAnonMode: () -> Unit = {
         feedViewModel.enterAnonMode()
         feedViewModel.resetForAnonSwitch()
@@ -697,15 +742,16 @@ fun WispNavHost(
         composable(Routes.SPLASH) {
             SplashScreen(
                 viewModel = splashViewModel,
+                authViewModel = authViewModel,
+                startOnSignIn = authViewModel.isAddingAccount,
+                onAccountCreated = { onAuthCompleted(true) },
+                onLoggedIn = { onAuthCompleted(false) },
                 onSignUp = {
                     if (authViewModel.signUp()) {
                         navController.navigate(Routes.ONBOARDING_PROFILE) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
                     }
-                },
-                onLogIn = {
-                    navController.navigate(Routes.AUTH)
                 },
                 onToggleTor = { feedViewModel.setTorEnabled(it) },
                 onCancel = if (authViewModel.isAddingAccount) {
@@ -736,47 +782,7 @@ fun WispNavHost(
             AuthScreen(
                 viewModel = authViewModel,
                 showSignUp = false,
-                onAuthenticated = { isNewAccount ->
-                    val wasAddingAccount = authViewModel.isAddingAccount
-                    authViewModel.isAddingAccount = false
-
-                    if (isNewAccount) {
-                        // New key generation always goes through full onboarding
-                        navController.navigate(Routes.ONBOARDING_PROFILE)
-                    } else if (wasAddingAccount && authViewModel.keyRepo.isOnboardingComplete()) {
-                        // Adding an existing account that already completed onboarding — skip straight to loading
-                        feedViewModel.reloadForNewAccount()
-                        relayViewModel.reload()
-                        blossomServersViewModel.reload()
-                        composeViewModel.reloadBlossomRepo()
-                        feedViewModel.initRelays()
-                        walletViewModel.refreshState()
-                        navController.navigate(Routes.LOADING) {
-                            popUpTo(Routes.AUTH) { inclusive = true }
-                        }
-                    } else if (authViewModel.keyRepo.isReadOnly()) {
-                        feedViewModel.reloadForNewAccount()
-                        relayViewModel.reload()
-                        feedViewModel.initRelays()
-                        authViewModel.keyRepo.markOnboardingComplete()
-                        navController.navigate(Routes.LOADING) {
-                            popUpTo(Routes.AUTH) { inclusive = true }
-                        }
-                    } else {
-                        feedViewModel.reloadForNewAccount()
-                        relayViewModel.reload()
-                        blossomServersViewModel.reload()
-                        composeViewModel.reloadBlossomRepo()
-                        // Start relay connections immediately so TCP/TLS handshakes
-                        // run in parallel with the onboarding welcome animation
-                        feedViewModel.initRelays()
-                        walletViewModel.refreshState()
-                        authViewModel.keyRepo.markOnboardingComplete()
-                        navController.navigate(Routes.EXISTING_USER_ONBOARDING) {
-                            popUpTo(Routes.AUTH) { inclusive = true }
-                        }
-                    }
-                },
+                onAuthenticated = onAuthCompleted,
                 onToggleTor = { feedViewModel.setTorEnabled(it) }
             )
         }

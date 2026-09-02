@@ -132,13 +132,13 @@ fun SplashScreen(
             Text(
                 text = stringResource(R.string.btn_cancel),
                 style = MaterialTheme.typography.labelLarge,
-                color = Color.White,
+                color = Color.Black,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(start = 16.dp, top = 16.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.25f))
+                    .background(Color.White.copy(alpha = 0.92f))
                     .clickable(onClick = onCancel)
                     .padding(horizontal = 20.dp, vertical = 8.dp)
             )

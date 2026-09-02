@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -1125,10 +1126,11 @@ fun FeedScreen(
                 )
                 FloatingActionButton(
                     onClick = onCompose,
+                    shape = CircleShape,
                     containerColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.graphicsLayer { alpha = fabAlpha }
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "New post")
+                    Icon(Icons.Default.Edit, contentDescription = "New post")
                 }
             }
         ) { padding ->

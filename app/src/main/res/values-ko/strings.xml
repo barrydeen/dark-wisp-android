@@ -60,7 +60,7 @@
     <string name="auth_login_with_signer">서명으로 로그인</string>
     <string name="auth_or_log_in_with_key">또는 키로 로그인</string>
     <string name="auth_nsec_or_npub">nsec 또는 npub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">게시물을 스크롤하는 작은 인터페이스</string>
     <string name="auth_hide_key">키 숨기기</string>
     <string name="auth_show_key">키 표시</string>

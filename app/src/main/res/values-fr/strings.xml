@@ -60,7 +60,7 @@
     <string name="auth_login_with_signer">Connexion avec Signer</string>
     <string name="auth_or_log_in_with_key">Ou connectez-vous avec votre clé</string>
     <string name="auth_nsec_or_npub">nsec ou npub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">une petite interface pour faire défiler les posts</string>
     <string name="auth_hide_key">Masquer la clé</string>
     <string name="auth_show_key">Afficher la clé</string>

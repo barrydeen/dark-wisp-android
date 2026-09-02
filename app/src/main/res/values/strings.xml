@@ -65,7 +65,7 @@
     <string name="auth_login_with_signer">Login with Signer</string>
     <string name="auth_or_log_in_with_key">Or log in with your key</string>
     <string name="auth_nsec_or_npub">nsec or npub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">a wee interface to scroll posts</string>
     <string name="auth_hide_key">Hide key</string>
     <string name="auth_show_key">Show key</string>

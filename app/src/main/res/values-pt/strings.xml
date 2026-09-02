@@ -60,7 +60,7 @@
     <string name="auth_login_with_signer">Entrar com Assinante</string>
     <string name="auth_or_log_in_with_key">Ou entre com sua chave</string>
     <string name="auth_nsec_or_npub">nsec ou npub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">uma pequena interface pararolar publicações</string>
     <string name="auth_hide_key">Ocultar chave</string>
     <string name="auth_show_key">Mostrar chave</string>

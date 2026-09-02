@@ -53,7 +53,7 @@
     <string name="auth_login_with_signer">Войти через подписчик</string>
     <string name="auth_or_log_in_with_key">Или войдите по ключу</string>
     <string name="auth_nsec_or_npub">nsec или npub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">небольшой интерфейс для прокрутки постов</string>
     <string name="auth_hide_key">Скрыть ключ</string>
     <string name="auth_show_key">Показать ключ</string>

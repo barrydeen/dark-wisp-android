@@ -60,7 +60,7 @@
     <string name="auth_login_with_signer">サイナーでログイン</string>
     <string name="auth_or_log_in_with_key">または鍵でログイン</string>
     <string name="auth_nsec_or_npub">nsecまたはnpub…</string>
-    <string name="auth_wisp">wisp</string>
+    <string name="auth_wisp">dark wisp</string>
     <string name="auth_tagline">投稿をスクロールするための小さなインターフェース</string>
     <string name="auth_hide_key">鍵を隠す</string>
     <string name="auth_show_key">鍵を表示</string>

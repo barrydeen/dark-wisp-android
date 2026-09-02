@@ -1,6 +1,5 @@
 package com.darkwisp.app.ui.screen
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -18,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -27,10 +27,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.core.LinearEasing
@@ -171,15 +170,28 @@ fun SplashScreen(
                 ),
                 label = "sway"
             )
-            Image(
-                painter = painterResource(R.drawable.ic_brand_logo),
+            Icon(
+                painter = painterResource(R.drawable.ic_wisp_logo),
                 contentDescription = stringResource(R.string.cd_wisp_logo),
+                tint = Color.Unspecified,
                 modifier = Modifier
-                    .size(144.dp)
-                    .clip(CircleShape)
+                    .size(96.dp)
                     .graphicsLayer {
                         translationY = bob * density
                         rotationZ = sway
+                    }
+                    .drawBehind {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color.Black,
+                                    Color.Black.copy(alpha = 0.6f),
+                                    Color.Transparent
+                                ),
+                                radius = size.minDimension * 0.65f
+                            ),
+                            radius = size.minDimension * 0.65f
+                        )
                     }
             )
             Text(
@@ -187,16 +199,9 @@ fun SplashScreen(
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 56.sp,
-                    fontWeight = FontWeight.W500,
-                    // Black fill with a soft orange halo behind each glyph —
-                    // reads as dark text ringed in an orange glow.
-                    shadow = Shadow(
-                        color = Color(0xFFFF9800),
-                        offset = Offset(0f, 0f),
-                        blurRadius = 22f
-                    )
+                    fontWeight = FontWeight.W500
                 ),
-                color = Color.Black
+                color = Color.White
             )
             liveMetrics?.let { OnlineCard(it) }
 

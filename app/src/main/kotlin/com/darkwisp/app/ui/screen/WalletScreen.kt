@@ -3211,6 +3211,22 @@ private fun TransactionRow(
                         style = MaterialTheme.typography.titleMedium,
                         color = signColor
                     )
+                    // Before the fiat branches: a token row has no sats value,
+                    // and the fiat rate converts sats, so running it here
+                    // would only produce a second wrong number.
+                    tx.isTokenTransfer -> {
+                        Text(
+                            "$sign${tx.assetAmountCompact ?: "?"}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = signColor
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            tx.assetTicker ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     isWalletFiat -> {
                         val fiat = AmountFormatter.formatFiat(amountSats, fiatCurrency)
                         if (fiat != null) {
@@ -3332,9 +3348,17 @@ private fun TransactionDetailPanel(
                 TransactionStatus.FAILED -> "Failed — not sent"
             }
         )
-        TxDetailRow("Type", if (tx.isOnchain) "On-chain" else "Lightning")
-        TxDetailRow("Amount", "%,d sats".format(sats))
-        if (tx.feeMsats > 0) TxDetailRow("Network fee", "%,d sats".format(feeSats))
+        if (tx.isTokenTransfer) {
+            val ticker = tx.assetTicker ?: ""
+            TxDetailRow("Type", "$ticker transfer")
+            // Full precision here; the row above shows two places.
+            TxDetailRow("Amount", "${tx.assetAmount ?: "?"} $ticker")
+            tx.assetFee?.let { TxDetailRow("Fee", "$it $ticker") }
+        } else {
+            TxDetailRow("Type", if (tx.isOnchain) "On-chain" else "Lightning")
+            TxDetailRow("Amount", "%,d sats".format(sats))
+            if (tx.feeMsats > 0) TxDetailRow("Network fee", "%,d sats".format(feeSats))
+        }
         TxDetailRow("Date", fullDate)
         if (note != null) TxDetailRow("Note", note)
         TxDetailRow(idLabel, tx.paymentHash, mono = true, onCopy = { onCopy(tx.paymentHash) })

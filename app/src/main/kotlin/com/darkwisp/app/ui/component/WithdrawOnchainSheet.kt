@@ -57,7 +57,15 @@ fun WithdrawOnchainSheet(
     var showConfirm by remember { mutableStateOf(false) }
 
     if (showScanner) {
-        ModalBottomSheet(onDismissRequest = { showScanner = false }) {
+        // Full height, as every other sheet in the app does. The default
+        // state opens partially expanded, which clips the fixed-height
+        // camera preview below — and this sheet has no scroll, so the
+        // cut-off portion can't be reached at all.
+        val scannerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showScanner = false },
+            sheetState = scannerSheetState
+        ) {
             Box(Modifier.fillMaxWidth().height(420.dp)) {
                 QrScanner(
                     onResult = { raw ->
@@ -74,7 +82,10 @@ fun WithdrawOnchainSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Without this the sheet opens partially expanded, leaving the amount
+    // field, fee-speed chips and the Withdraw button below the fold.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

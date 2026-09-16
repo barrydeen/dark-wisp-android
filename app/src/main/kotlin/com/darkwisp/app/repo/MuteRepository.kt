@@ -89,10 +89,37 @@ class MuteRepository(private val context: Context, pubkeyHex: String? = null) {
         saveToPrefs()
     }
 
-    fun containsMutedWord(content: String): Boolean {
+    /**
+     * True if [event] matches any muted word or hashtag rule:
+     *  - a muted word entered with a leading "#" matches the event's lowercase
+     *    `t` tag values (the "#" stripped), or appears literally in the content;
+     *  - any other muted word is matched as a case-insensitive substring of the
+     *    content.
+     *
+     * Hashtags are usually carried in `t` tags rather than the raw text, so
+     * checking the content alone misses tag-based hashtags like "#657".
+     */
+    fun isEventMuted(event: NostrEvent): Boolean {
         if (wordSet.isEmpty()) return false
-        val lower = content.lowercase()
-        return wordSet.any { lower.contains(it) }
+        val lowerContent = event.content.lowercase()
+        val hashtags: Set<String> =
+            if (wordSet.any { it.startsWith("#") }) {
+                event.tags.asSequence()
+                    .filter { it.size >= 2 && it[0] == "t" }
+                    .mapTo(HashSet()) { it[1].lowercase() }
+            } else {
+                emptySet()
+            }
+        for (word in wordSet) {
+            if (word.startsWith("#")) {
+                val tag = word.substring(1)
+                if (tag.isNotEmpty() && tag in hashtags) return true
+                if (lowerContent.contains(word)) return true
+            } else if (lowerContent.contains(word)) {
+                return true
+            }
+        }
+        return false
     }
 
     fun muteThread(rootEventId: String) {

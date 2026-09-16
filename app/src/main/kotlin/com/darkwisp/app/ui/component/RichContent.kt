@@ -1215,7 +1215,11 @@ fun QuotedNote(
     // Cap nesting: depth >= 1 means we're already inside a quoted note,
     // so force compact preview to avoid squashed action bars
     val effectiveActions = if (quoteDepth >= 1) null else noteActions
-    val effectiveNoteClick = effectiveActions?.onNoteClick ?: noteActions?.onNoteClick ?: onNoteClick
+    // The explicit parameter wins. `NoteActions.onNoteClick` is non-nullable with
+    // a no-op default, so "nobody wired it" and "wired to do nothing" look
+    // identical to `?:` — putting it first let the default swallow the tap and
+    // made the working handler below it unreachable.
+    val effectiveNoteClick = onNoteClick ?: effectiveActions?.onNoteClick ?: noteActions?.onNoteClick
 
     // Fetch poll votes when quoted event is a poll
     LaunchedEffect(event?.id, event?.kind) {
@@ -1278,6 +1282,13 @@ fun QuotedNote(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 6.dp)
+                .then(
+                    // Only the no-actions fallback path below carried this, so
+                    // taps landing on the card's padding rather than the inner
+                    // post went nowhere.
+                    if (effectiveNoteClick != null) Modifier.clickable { effectiveNoteClick(eventId) }
+                    else Modifier
+                )
         ) {
             if (isGalleryEvent(event)) {
                 GalleryCard(

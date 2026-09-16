@@ -6,6 +6,7 @@ import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
@@ -215,7 +216,10 @@ class ThreadViewModel : ViewModel() {
                     return@collect
                 }
 
-                if (event.kind != 1) return@collect
+                // Admit NIP-22 comments (kind 1111). Clients increasingly reply with
+                // comments rather than kind 1, so a kind-1-only gate shows those
+                // threads as empty — every reply on some notes is a 1111.
+                if (event.kind != 1 && event.kind != Nip22.KIND_COMMENT) return@collect
 
                 // Silently drop events the user has already deleted on some other client/session.
                 if (eventRepo.deletedEventsRepo?.isDeleted(event.id) == true) return@collect
@@ -279,7 +283,7 @@ class ThreadViewModel : ViewModel() {
             // Phase 2: Now we (hopefully) have the root — use outbox routing for replies
             val rootEvent = _rootEvent.value
             // Include kind 5 so deletions of the root (or any event tagging the root) come through.
-            val repliesFilter = Filter(kinds = listOf(1, 5), eTags = listOf(rootId))
+            val repliesFilter = Filter(kinds = listOf(1, 5, Nip22.KIND_COMMENT), eTags = listOf(rootId))
             if (rootEvent != null) {
                 outboxRouter.subscribeToUserReadRelays(
                     "thread-replies", rootEvent.pubkey, repliesFilter

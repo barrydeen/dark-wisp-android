@@ -9,6 +9,7 @@ import com.darkwisp.app.nostr.DmZap
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip17
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip53
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip51
@@ -143,7 +144,7 @@ class EventRouter(
                             }
                         }
                     }
-                    1 -> {
+                    1, Nip22.KIND_COMMENT -> {
                         eventRepo.cacheEvent(event)
                         if (!Nip10.isStandaloneQuote(event)) {
                             val parentId = Nip10.getReplyTarget(event)
@@ -166,7 +167,7 @@ class EventRouter(
         } else if (subscriptionId == "notif-replies-etag") {
             if (muteRepo.isBlocked(event.pubkey)) return
             val myPubkey = getUserPubkey()
-            if (myPubkey != null && event.kind == 1) {
+            if (myPubkey != null && (event.kind == 1 || event.kind == Nip22.KIND_COMMENT)) {
                 eventRepo.cacheEvent(event)
                 val parentId = if (!Nip10.isStandaloneQuote(event)) {
                     Nip10.getReplyTarget(event)
@@ -194,7 +195,7 @@ class EventRouter(
             }
         } else if (subscriptionId == "self-notes") {
             eventRepo.cacheEvent(event)
-            if (event.kind == 1) {
+            if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
                 val parentId = Nip10.getReplyTarget(event)
                 if (parentId != null) eventRepo.addReplyCount(parentId, event.id)
             }
@@ -214,7 +215,7 @@ class EventRouter(
                 metadataFetcher.addToPendingProfiles(event.pubkey)
             }
         } else if (subscriptionId.startsWith("reply-count-")) {
-            if (event.kind == 1) {
+            if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
                 eventRepo.cacheEvent(event)
                 val parentId = Nip10.getReplyTarget(event)
                 if (parentId != null) eventRepo.addReplyCount(parentId, event.id)
@@ -261,7 +262,7 @@ class EventRouter(
                         metadataFetcher.addToPendingProfiles(zapperPubkey)
                     }
                 }
-                1 -> {
+                1, Nip22.KIND_COMMENT -> {
                     eventRepo.cacheEvent(event)
                     val parentId = Nip10.getReplyTarget(event)
                     if (parentId != null) eventRepo.addReplyCount(parentId, event.id)
@@ -273,7 +274,7 @@ class EventRouter(
             // (engagement subs fetch reposts for all viewed posts, not just ours).
             val myPubkey = getUserPubkey()
             val isNotifEligible = myPubkey != null && event.pubkey != myPubkey &&
-                event.kind in intArrayOf(1, 6, 7, 9735, Nip88.KIND_POLL_RESPONSE) &&
+                event.kind in intArrayOf(1, Nip22.KIND_COMMENT, 6, 7, 9735, Nip88.KIND_POLL_RESPONSE) &&
                 !muteRepo.isBlocked(event.pubkey)
             val isRepostOfOther = event.kind == 6 && run {
                 val repostedId = event.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)

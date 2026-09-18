@@ -6,6 +6,7 @@ import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.CustomNip
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.OutboxRouter
@@ -135,7 +136,7 @@ class ArticleViewModel : ViewModel() {
         collectorJob = viewModelScope.launch {
             relayPool.relayEvents.collect { (event, relayUrl, subId) ->
                 if (subId == commentSubId || subId == eTagSubId) {
-                    if (event.kind != 1) return@collect
+                    if (event.kind != 1 && event.kind != Nip22.KIND_COMMENT) return@collect
                     val isNew = event.id !in commentEvents
                     if (isNew) {
                         commentEvents[event.id] = event
@@ -175,7 +176,7 @@ class ArticleViewModel : ViewModel() {
         // Two-phase loading matching ThreadViewModel pattern
         loadJob = viewModelScope.launch {
             // Phase 1a: Subscribe for comments via `a` tag on author's read relays + top relays
-            val commentFilter = Filter(kinds = listOf(1), aTags = listOf(coordinate))
+            val commentFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT), aTags = listOf(coordinate))
             outboxRouter.subscribeToUserReadRelays(commentSubId, author, commentFilter)
             val aTagMsg = ClientMessage.req(commentSubId, commentFilter)
             for (url in topRelayUrls) {
@@ -184,7 +185,7 @@ class ArticleViewModel : ViewModel() {
 
             // Phase 1b: Also subscribe via e-tag — many clients reply with e-tags
             if (articleEventId != null) {
-                val eTagFilter = Filter(kinds = listOf(1), eTags = listOf(articleEventId))
+                val eTagFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT), eTags = listOf(articleEventId))
                 outboxRouter.subscribeToUserReadRelays(eTagSubId, author, eTagFilter)
                 val eTagMsg = ClientMessage.req(eTagSubId, eTagFilter)
                 for (url in topRelayUrls) {

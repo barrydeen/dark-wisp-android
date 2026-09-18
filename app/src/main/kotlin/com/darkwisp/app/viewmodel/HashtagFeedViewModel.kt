@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
@@ -131,7 +132,7 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
                         val e = relayEvent.event
                         when (e.kind) {
                             6, 7, 1018, 9735 -> eventRepo.addEvent(e)
-                            1 -> {
+                            1, Nip22.KIND_COMMENT -> {
                                 val parentId = Nip10.getReplyTarget(e)
                                 if (parentId != null) eventRepo.addReplyCount(parentId, e.id)
                             }
@@ -186,7 +187,7 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
             eventIds.chunked(50).forEachIndexed { index, batch ->
                 val subId = if (index == 0) engagePrefix else "$engagePrefix-$index"
                 activeSubIds.add(subId)
-                val filter = Filter(kinds = listOf(1, 5, 6, 7, 1018, 9735), eTags = batch, limit = 500)
+                val filter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 5, 6, 7, 1018, 9735), eTags = batch, limit = 500)
                 relayPool.sendToRelayOrEphemeral(SearchViewModel.DEFAULT_SEARCH_RELAY, ClientMessage.req(subId, filter))
             }
         }

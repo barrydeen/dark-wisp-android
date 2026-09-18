@@ -229,9 +229,10 @@ class ThreadViewModel : ViewModel() {
 
                 if (Nip10.isStandaloneQuote(event)) return@collect
 
-                // Validate: event must reference the thread root (some relays ignore eTags filter)
-                if (event.id != rootId &&
-                    event.tags.none { it.size >= 2 && it[0] == "e" && it[1] == rootId }) {
+                // Validate: event must reference the thread root (some relays ignore eTags filter).
+                // NIP-22 replies-to-comments point at the root only via uppercase E
+                // scope — lowercase e names the parent comment — so accept either.
+                if (event.id != rootId && !Nip22.referencesRoot(event, rootId)) {
                     return@collect
                 }
 
@@ -283,21 +284,28 @@ class ThreadViewModel : ViewModel() {
             // Phase 2: Now we (hopefully) have the root — use outbox routing for replies
             val rootEvent = _rootEvent.value
             // Include kind 5 so deletions of the root (or any event tagging the root) come through.
-            val repliesFilter = Filter(kinds = listOf(1, 5, Nip22.KIND_COMMENT), eTags = listOf(rootId))
+            // Two ORed filters: lowercase #e catches direct replies (kind 1 and
+            // top-level 1111s); uppercase #E catches nested NIP-22 comment replies
+            // whose lowercase e points at the parent comment, not the root.
+            // They must be separate filters — one object would AND the conditions.
+            val repliesFilters = listOf(
+                Filter(kinds = listOf(1, 5, Nip22.KIND_COMMENT), eTags = listOf(rootId)),
+                Filter(kinds = listOf(Nip22.KIND_COMMENT), bigETags = listOf(rootId))
+            )
             if (rootEvent != null) {
                 outboxRouter.subscribeToUserReadRelays(
-                    "thread-replies", rootEvent.pubkey, repliesFilter
+                    "thread-replies", rootEvent.pubkey, repliesFilters
                 )
             } else {
                 // Root still not found — query all relays as fallback
                 relayPool.sendToAll(
-                    ClientMessage.req("thread-replies", repliesFilter)
+                    ClientMessage.req("thread-replies", repliesFilters)
                 )
             }
             // Also query top scored relays as safety net
             for (url in topRelayUrls) {
                 relayPool.sendToRelayOrEphemeral(url,
-                    ClientMessage.req("thread-replies", repliesFilter))
+                    ClientMessage.req("thread-replies", repliesFilters))
             }
 
             // Wait for replies EOSE, then hide spinner

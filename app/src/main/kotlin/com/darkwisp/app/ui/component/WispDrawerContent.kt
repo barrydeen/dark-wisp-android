@@ -831,10 +831,13 @@ private fun DrawerMiniWalletRow(
             "\u2026"
         else -> {
             val sats = balanceMsats / 1000
-            // App-wide fiat mode renders the converted amount when a rate
-            // is cached; the wallet-scoped FIAT display mode stays a
-            // dashboard-only concern.
-            val fiat = if (fiatMode) AmountFormatter.formatFiat(sats, fiatCurrency) else null
+            // Wallet-scoped FIAT display mode (set on the dashboard) renders
+            // here too, like zap cooking android #267; app-wide fiat mode
+            // still applies when the wallet is in its default sats state,
+            // mirroring the dashboard's own precedence.
+            val fiat = if (fiatMode || displayMode == WalletBalanceDisplayMode.FIAT) {
+                AmountFormatter.formatFiat(sats, fiatCurrency)
+            } else null
             if (fiat != null) {
                 fiat
             } else {

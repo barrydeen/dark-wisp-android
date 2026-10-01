@@ -53,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -89,6 +90,7 @@ import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.LiveChatMessage
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.ui.component.EmojiReactionPopup
+import com.darkwisp.app.ui.component.updateKeepScreenOn
 import com.darkwisp.app.ui.component.InlineVideoPlayerWithFullscreen
 import com.darkwisp.app.ui.component.MediaMeta
 import com.darkwisp.app.ui.component.ProfilePicture
@@ -132,6 +134,15 @@ fun LiveStreamScreen(
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(0)
         }
+    }
+
+    // Keep the screen on for the live session — the stream keeps playing
+    // while users park on the watch-party chat, and idle behavior resumes
+    // on leaving the screen.
+    val context = LocalContext.current
+    DisposableEffect(context) {
+        context.updateKeepScreenOn(true)
+        onDispose { context.updateKeepScreenOn(false) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {

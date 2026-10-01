@@ -197,23 +197,10 @@ fun PostCard(
         event.tags.firstOrNull { it.size >= 2 && it[0] == "client" }?.get(1)
     }
 
-    // Reply-to attribution: resolve the author of the event being replied to
-    val replyToPubkey = remember(event.id) {
-        if (!Nip10.isReply(event)) null
-        else {
-            // Use the pubkey of the actual reply target event, not the first p-tag
-            val replyTargetId = Nip10.getReplyTarget(event)
-            replyTargetId?.let { eventRepo?.getEvent(it)?.pubkey }
-                ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
-        }
-    }
-    // Re-derive when profiles load so we don't get stuck showing hex
-    val profileVersion by eventRepo?.profileVersion?.collectAsState() ?: remember { mutableIntStateOf(0) }
-    val replyToName = remember(replyToPubkey, profileVersion) {
-        replyToPubkey?.let { pk ->
-            eventRepo?.getProfileData(pk)?.displayString ?: (pk.take(8) + "...")
-        }
-    }
+    // Reply-to attribution: resolve the author of the event being replied to.
+    // Keyed lookups so only this card recomposes when the reply target/profile arrives.
+    val replyTargetId = remember(event) { Nip10.getReplyTarget(event) }
+    val replyTarget = rememberObservedEvent(eventRepo, replyTargetId)
 
     val hasReactionDetails = reactionDetails.isNotEmpty() || zapDetails.isNotEmpty() || repostDetails.isNotEmpty()
     var expandedDetails by remember { mutableStateOf(false) }
@@ -231,9 +218,9 @@ fun PostCard(
     ) {
         if (repostPubkeys.isNotEmpty()) {
             val maxAvatars = 10
-            val displayPubkeys = repostPubkeys.take(maxAvatars)
+            val displayPubkeys = remember(repostPubkeys) { repostPubkeys.take(maxAvatars) }
             val overflow = repostPubkeys.size - maxAvatars
-            val formattedRepostTime = repostTime?.let { formatTimestamp(it) }
+            val formattedRepostTime = remember(repostTime) { repostTime?.let { formatTimestamp(it) } }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -251,7 +238,7 @@ fun PostCard(
                 // Overlapping avatars
                 Box(modifier = Modifier.height(20.dp).width((displayPubkeys.size * 14 + 6 + 4).dp)) {
                     displayPubkeys.forEachIndexed { index, pubkey ->
-                        val avatarUrl = eventRepo?.getProfileData(pubkey)?.picture
+                        val avatarUrl = rememberProfile(eventRepo, pubkey)?.picture
                         Box(modifier = Modifier.offset(x = (index * 14).dp)) {
                             ProfilePicture(
                                 url = avatarUrl,
@@ -264,14 +251,17 @@ fun PostCard(
                 }
 
                 // Label text
-                val labelText = if (repostPubkeys.size == 1) {
-                    val name = eventRepo?.getProfileData(repostPubkeys.first())?.displayString
-                        ?: (repostPubkeys.first().take(8) + "...")
-                    "$name reposted"
-                } else if (overflow > 0) {
-                    "and $overflow others reposted"
-                } else {
-                    "reposted"
+                val singleReposter = if (repostPubkeys.size == 1) rememberProfile(eventRepo, repostPubkeys.first()) else null
+                val labelText = remember(repostPubkeys, singleReposter) {
+                    if (repostPubkeys.size == 1) {
+                        val name = singleReposter?.displayString
+                            ?: (repostPubkeys.first().take(8) + "...")
+                        "$name reposted"
+                    } else if (overflow > 0) {
+                        "and $overflow others reposted"
+                    } else {
+                        "reposted"
+                    }
                 }
                 Text(
                     text = labelText,
@@ -290,7 +280,14 @@ fun PostCard(
                 }
             }
         }
-        if (replyToName != null) {
+        if (Nip10.isReply(event)) {
+            val replyToPubkey = replyTarget?.pubkey
+                ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+            val replyProfile = rememberProfile(eventRepo, replyToPubkey)
+            val replyToName = remember(replyToPubkey, replyProfile) {
+                replyProfile?.displayString ?: replyToPubkey?.let { (it.take(8) + "...") }
+            }
+            if (replyToName != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 4.dp)
@@ -309,6 +306,7 @@ fun PostCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -779,9 +777,11 @@ fun PostCard(
                     zapDetails.maxByOrNull { it.sats }
                 }
                 if (topZap != null) {
-                    val zapperProfile = eventRepo?.getProfileData(topZap.pubkey)
-                    val zapperName = zapperProfile?.displayString
-                        ?: (topZap.pubkey.take(8) + "...")
+                    val zapperProfile = rememberProfile(eventRepo, topZap.pubkey)
+                    val zapperName = remember(zapperProfile, topZap) {
+                        zapperProfile?.displayString
+                            ?: (topZap.pubkey.take(8) + "...")
+                    }
                     TopZapperBanner(
                         avatarUrl = zapperProfile?.picture,
                         name = zapperName,

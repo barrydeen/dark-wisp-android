@@ -168,6 +168,14 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
         // Reload wallet repos so mnemonic + mode are stored under the correct pubkey prefs
         walletModeRepo?.reload(pubHex)
 
+        // Re-key Spark prefs up front so the pre-connect below (and the wallet it
+        // registers) lands under the pubkey-specific prefs. reload() now refuses to
+        // re-key while connected; doing it here lets reloadForNewAccount() at the end
+        // of onboarding no-op instead of tripping that guard.
+        if (sparkRepo != null && realKeypair != null) {
+            sparkRepo.reload(pubHex)
+        }
+
         viewModelScope.launch {
             val relays = RelayProber.discoverAndSelect(
                 keypair = keypair,

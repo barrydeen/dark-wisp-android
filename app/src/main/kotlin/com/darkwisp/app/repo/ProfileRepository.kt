@@ -2,7 +2,6 @@ package com.darkwisp.app.repo
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.LruCache
 import android.util.Log
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
@@ -12,89 +11,67 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class ProfileRepository(context: Context) {
+class ProfileRepository internal constructor(prefs: SharedPreferences, val avatarDir: File) : AutoCloseable {
     private companion object {
         /** Bump when ProfileData gains fields that need a cache re-parse. */
         const val SCHEMA_VERSION = 1
+
+        /**
+         * Cached ProfileData is parsed JSON, so profiles stored before a new
+         * field existed (e.g. clinkOffer) deserialize without it — and the
+         * timestamp guard in [PersistedMetadataCache.update] blocks re-parsing an
+         * unchanged kind-0. On schema bump, drop the stored timestamps (keeping the
+         * profiles) so the next received event re-parses with the new fields.
+         * Runs before the cache is constructed so the migration is visible on load.
+         */
+        private fun migratedPrefs(context: Context): SharedPreferences {
+            val prefs = context.getSharedPreferences("wisp_profiles", Context.MODE_PRIVATE)
+            if (prefs.getInt("schema_version", 0) >= SCHEMA_VERSION) return prefs
+            val editor = prefs.edit()
+            prefs.all.keys.filter { it.startsWith("p_ts_") }.forEach { editor.remove(it) }
+            editor.putInt("schema_version", SCHEMA_VERSION).apply()
+            return prefs
+        }
     }
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("wisp_profiles", Context.MODE_PRIVATE)
+    constructor(context: Context) : this(
+        migratedPrefs(context),
+        File(context.filesDir, "avatars").also { it.mkdirs() }
+    )
+
     private val json = Json { ignoreUnknownKeys = true }
-
-    private val cache = LruCache<String, ProfileData>(2000)
-    private val timestamps = LruCache<String, Long>(2000)
-
-    val avatarDir = File(context.filesDir, "avatars").also { it.mkdirs() }
-
-    init {
-        migrateSchema()
-        loadFromPrefs()
-    }
-
-    /**
-     * Cached ProfileData is parsed JSON, so profiles stored before a new
-     * field existed (e.g. clinkOffer) deserialize without it — and the
-     * timestamp guard in [updateFromEvent] blocks re-parsing an unchanged
-     * kind-0. On schema bump, drop the stored timestamps (keeping the
-     * profiles) so the next received event re-parses with the new fields.
-     */
-    private fun migrateSchema() {
-        if (prefs.getInt("schema_version", 0) >= SCHEMA_VERSION) return
-        val editor = prefs.edit()
-        prefs.all.keys.filter { it.startsWith("p_ts_") }.forEach { editor.remove(it) }
-        editor.putInt("schema_version", SCHEMA_VERSION).apply()
-    }
+    private val cache = PersistedMetadataCache<ProfileData>(
+        prefs, "p_",
+        encode = { json.encodeToString(it) },
+        decode = { json.decodeFromString<ProfileData>(it) },
+        onFailure = { Log.w("ProfileRepository", "Metadata write failed", it) }
+    )
 
     fun updateFromEvent(event: NostrEvent): ProfileData? {
         if (event.kind != 0) return null
-        val existing = timestamps.get(event.pubkey)
-        if (existing != null && event.created_at <= existing) return cache.get(event.pubkey)
-
         val profile = ProfileData.fromEvent(event) ?: return null
-        cache.put(event.pubkey, profile)
-        timestamps.put(event.pubkey, event.created_at)
-        saveToPrefs(event.pubkey, profile, event.created_at)
-        return profile
+        return if (cache.update(event.pubkey, profile, event.created_at)) profile else null
     }
 
-    fun get(pubkey: String): ProfileData? {
-        cache.get(pubkey)?.let { return it }
-        return loadOneFromPrefs(pubkey)
-    }
+    fun get(pubkey: String): ProfileData? = cache.get(pubkey)
 
     fun has(pubkey: String): Boolean = get(pubkey) != null
 
     fun search(query: String, limit: Int = 10): List<ProfileData> {
         if (query.isBlank()) return emptyList()
         val lowerQuery = query.lowercase()
-        val snapshot = cache.snapshot()
-        return snapshot.values.filter { profile ->
+        return cache.values().filter { profile ->
             profile.name?.lowercase()?.contains(lowerQuery) == true ||
             profile.displayName?.lowercase()?.contains(lowerQuery) == true ||
             profile.nip05?.lowercase()?.contains(lowerQuery) == true
         }.take(limit)
     }
 
-    private fun loadOneFromPrefs(pubkey: String): ProfileData? {
-        val str = prefs.getString("p_$pubkey", null) ?: return null
-        return try {
-            val profile = json.decodeFromString<ProfileData>(str)
-            val ts = prefs.getLong("p_ts_$pubkey", 0)
-            cache.put(pubkey, profile)
-            timestamps.put(pubkey, ts)
-            profile
-        } catch (_: Exception) {
-            null
-        }
-    }
+    suspend fun flush() = cache.flush()
 
-    private fun saveToPrefs(pubkey: String, profile: ProfileData, timestamp: Long) {
-        prefs.edit()
-            .putString("p_$pubkey", json.encodeToString(profile))
-            .putLong("p_ts_$pubkey", timestamp)
-            .apply()
-    }
+    override fun close() = cache.close()
+
+    suspend fun shutdown() = cache.shutdown()
 
     /**
      * Returns a local File for the user's cached avatar, or null if not cached.
@@ -127,20 +104,4 @@ class ProfileRepository(context: Context) {
         }
     }
 
-    private fun loadFromPrefs() {
-        val allKeys = prefs.all.keys
-        val pubkeys = allKeys
-            .filter { it.startsWith("p_") && !it.startsWith("p_ts_") }
-            .map { it.removePrefix("p_") }
-
-        for (pubkey in pubkeys) {
-            try {
-                val str = prefs.getString("p_$pubkey", null) ?: continue
-                val ts = prefs.getLong("p_ts_$pubkey", 0)
-                val profile = json.decodeFromString<ProfileData>(str)
-                cache.put(pubkey, profile)
-                timestamps.put(pubkey, ts)
-            } catch (_: Exception) {}
-        }
-    }
 }

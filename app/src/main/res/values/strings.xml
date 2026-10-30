@@ -522,7 +522,7 @@
     <string name="settings_media_layout_gallery">Gallery</string>
     <string name="settings_media_layout_stack">Stack</string>
     <string name="settings_hide_live_streams">Hide live streams</string>
-    <string name="settings_hide_live_streams_description">Hide the live streams row from the top of your feed</string>
+    <string name="settings_hide_live_streams_description">Hide the live streams row from your feed and stop live stream discovery. When on, no live content loads or plays</string>
     <!-- Notifications display -->
     <string name="settings_notifications">Notifications</string>
     <string name="settings_notif_list_style">List style</string>

@@ -107,6 +107,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.TextButton
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.Bolt11
+import com.darkwisp.app.nostr.BlossomUri
 import com.darkwisp.app.nostr.Noffer
 import com.darkwisp.app.nostr.NofferData
 import com.darkwisp.app.nostr.Nip19
@@ -238,7 +239,7 @@ private fun isBlossomUrl(url: String): Boolean {
     }
 }
 
-private val combinedRegex = Regex("""nostr:(note1|nevent1|npub1|nprofile1|naddr1)[a-z0-9]+|(?<!\w)(npub1[a-z0-9]{58})(?!\w|\.[a-zA-Z])|(?:https?|wss?)://\S+|(?<![\p{L}\p{M}\p{Nd}_@.])((?:[\p{L}\p{M}0-9](?:[\p{L}\p{M}0-9-]*[\p{L}\p{M}0-9])?\.)+(?:${IANA_TLD_ALTERNATION})(?:/\S*)?)(?![\p{L}\p{M}\p{Nd}_])|(?<!\w)#([\p{L}0-9_][\p{L}\p{M}0-9_-]*)|(?<!\w)((?:note1|nevent1|nprofile1|naddr1)[a-z0-9]{10,})(?!\w)""", RegexOption.IGNORE_CASE)
+private val combinedRegex = Regex("""nostr:(note1|nevent1|npub1|nprofile1|naddr1)[a-z0-9]+|(?<!\w)(npub1[a-z0-9]{58})(?!\w|\.[a-zA-Z])|(?:https?|wss?)://\S+|blossom:\S+|(?<![\p{L}\p{M}\p{Nd}_@.])((?:[\p{L}\p{M}0-9](?:[\p{L}\p{M}0-9-]*[\p{L}\p{M}0-9])?\.)+(?:${IANA_TLD_ALTERNATION})(?:/\S*)?)(?![\p{L}\p{M}\p{Nd}_])|(?<!\w)#([\p{L}0-9_][\p{L}\p{M}0-9_-]*)|(?<!\w)((?:note1|nevent1|nprofile1|naddr1)[a-z0-9]{10,})(?!\w)""", RegexOption.IGNORE_CASE)
 
 private val emojiShortcodeRegex = Regex(""":([a-zA-Z0-9_-]+):""")
 
@@ -343,7 +344,11 @@ internal fun parseContent(content: String, emojiMap: Map<String, String> = empty
             val isWebSocket = url.startsWith("wss://") || url.startsWith("ws://")
             val meta = imetaMap[url]
             val imetaMime = meta?.mime?.let { classifyByMime(it) }
-            val ext = url.substringAfterLast('.').substringBefore('?').lowercase()
+            // A `blossom:` URI's query carries dotted server hints, so the
+            // last '.' in the raw string sits inside them — the extension
+            // must come from the parsed reference, not from the tail.
+            val ext = if (url.startsWith(BlossomUri.SCHEME, ignoreCase = true)) BlossomUri.parse(url)?.ext
+                else url.substringAfterLast('.').substringBefore('?').lowercase()
             when {
                 imetaMime == "image" -> segments.add(ContentSegment.ImageSegment(meta!!))
                 imetaMime == "video" -> segments.add(ContentSegment.VideoSegment(meta!!))

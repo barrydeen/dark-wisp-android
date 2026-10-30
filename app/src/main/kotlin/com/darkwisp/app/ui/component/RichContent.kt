@@ -687,6 +687,27 @@ private fun LightningInvoiceCard(
     }
 }
 
+/** Splits [text] on word-bounded `@name` runs matched by [mentionPattern] and
+ *  styles them [mentionColor], the rest [baseColor] — the composer preview's
+ *  stand-in for published profile mentions, which only materialize as
+ *  nostr: URIs at publish time. */
+private fun AnnotatedString.Builder.appendTextWithMentions(
+    text: String,
+    mentionPattern: Regex,
+    baseColor: Color,
+    mentionColor: Color
+) {
+    var last = 0
+    for (match in mentionPattern.findAll(text)) {
+        val start = match.range.first
+        val end = match.range.last + 1
+        withStyle(SpanStyle(color = baseColor)) { append(text, last, start) }
+        withStyle(SpanStyle(color = mentionColor)) { append(text, start, end) }
+        last = end
+    }
+    withStyle(SpanStyle(color = baseColor)) { append(text, last, text.length) }
+}
+
 @Composable
 fun RichContent(
     content: String,
@@ -696,6 +717,10 @@ fun RichContent(
     emojiMap: Map<String, String> = emptyMap(),
     imetaMap: Map<String, MediaMeta> = emptyMap(),
     plainLinks: Boolean = false,
+    /** `@name` display tokens the composer tracks as mentions — styled in the
+     *  link tier so the live preview shows them as it will render once
+     *  published (mentions only materialize as nostr: URIs at publish time). */
+    mentionNames: List<String> = emptyList(),
     // When true, a CLINK noffer renders as a compact inline label instead of
     // the full Pay-offer card — used on the profile bio, where the offer is
     // already payable via the profile's dedicated pay button.
@@ -819,6 +844,13 @@ fun RichContent(
     val defaultLinkColor = MaterialTheme.colorScheme.primary
     val effectiveLinkColor = if (linkColor == Color.Unspecified) defaultLinkColor else linkColor
     val linkDecoration = if (linkColor == Color.Unspecified) TextDecoration.None else TextDecoration.Underline
+    val mentionPattern = remember(mentionNames) {
+        // No word-boundary guard: the editor styles a tracked mention wherever
+        // its range sits (and publishes it there), even glued to preceding
+        // text — the preview must not disagree based on a lookbehind.
+        if (mentionNames.isEmpty()) null
+        else Regex("@(?:${mentionNames.distinct().joinToString("|") { Regex.escape(it) }})")
+    }
     val uriHandler = LocalUriHandler.current
 
     SelectionContainer {
@@ -905,8 +937,12 @@ fun RichContent(
                     for (seg in inlineSegments) {
                         when (seg) {
                             is ContentSegment.TextSegment -> {
-                                withStyle(SpanStyle(color = color)) {
-                                    append(seg.text)
+                                if (mentionPattern == null) {
+                                    withStyle(SpanStyle(color = color)) {
+                                        append(seg.text)
+                                    }
+                                } else {
+                                    appendTextWithMentions(seg.text, mentionPattern, color, effectiveLinkColor)
                                 }
                             }
                             is ContentSegment.CustomEmojiSegment -> {

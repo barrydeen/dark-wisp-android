@@ -297,13 +297,13 @@ internal class ProtectedTranslationDocument private constructor(
                 val body = if (trailing.isEmpty()) afterLeading else {
                     afterLeading.dropLast(trailing.length)
                 }
-                val protected = if (body.isNotEmpty()) {
+                val protectedText = if (body.isNotEmpty()) {
                     TranslationTextProtector.protect(body).takeIf { it.hasTranslatableText }
                 } else {
                     null
                 }
 
-                lines += Line(leading, body, trailing, lineBreak, protected)
+                lines += Line(leading, body, trailing, lineBreak, protectedText)
                 start = separatorEnd
             }
 

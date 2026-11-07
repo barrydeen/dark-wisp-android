@@ -54,31 +54,45 @@ class DeepLApiClient(
             throw IOException("This post is too long to translate in one request.")
         }
 
-        val protected = TranslationTextProtector.protect(sourceText)
-        val payload = DeepLTranslateRequest(
-            text = listOf(protected.text),
-            targetLang = deepLTargetLanguageCode(targetLanguage)
-        )
-        val request = Request.Builder()
-            .url(deepLApiBaseUrl(apiKey) + "/v2/translate")
-            .header("Authorization", "DeepL-Auth-Key " + apiKey.trim())
-            .header("Content-Type", "application/json")
-            .post(json.encodeToString(payload).toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
+        // Translate prose line by line. Newlines are presentation structure in
+        // Nostr notes: a standalone image URL must not become an inline URL,
+        // or RichContent may render it with a different layout.
+        val document = TranslationTextProtector.protectDocument(sourceText)
+        val translatedTexts = mutableListOf<String>()
+        var detectedSourceLanguage: String? = null
 
-        val body = execute(request)
-        val response = try {
-            json.decodeFromString<DeepLTranslateResponse>(body)
-        } catch (e: Exception) {
-            throw IOException("DeepL returned an unreadable translation response.", e)
+        for (batch in document.texts.chunked(MAX_TEXTS_PER_REQUEST)) {
+            val payload = DeepLTranslateRequest(
+                text = batch,
+                targetLang = deepLTargetLanguageCode(targetLanguage)
+            )
+            val request = Request.Builder()
+                .url(deepLApiBaseUrl(apiKey) + "/v2/translate")
+                .header("Authorization", "DeepL-Auth-Key " + apiKey.trim())
+                .header("Content-Type", "application/json")
+                .post(json.encodeToString(payload).toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+
+            val body = execute(request)
+            val response = try {
+                json.decodeFromString<DeepLTranslateResponse>(body)
+            } catch (e: Exception) {
+                throw IOException("DeepL returned an unreadable translation response.", e)
+            }
+            if (response.translations.size != batch.size) {
+                throw IOException("DeepL returned an incomplete translation.")
+            }
+            response.translations.forEach { translated ->
+                translatedTexts += translated.text
+                if (detectedSourceLanguage == null) {
+                    detectedSourceLanguage = translated.detectedSourceLanguage
+                }
+            }
         }
-        val translated = response.translations.firstOrNull()
-            ?: throw IOException("DeepL returned an empty translation.")
-        val restored = protected.restore(translated.text)
 
         return DeepLTranslationResult(
-            text = restored,
-            detectedSourceLanguage = translated.detectedSourceLanguage
+            text = document.restore(translatedTexts),
+            detectedSourceLanguage = detectedSourceLanguage
         )
     }
 
@@ -141,6 +155,7 @@ class DeepLApiClient(
 
     private companion object {
         const val MAX_TEXT_LENGTH = 30_000
+        const val MAX_TEXTS_PER_REQUEST = 50
     }
 }
 
@@ -190,7 +205,8 @@ internal fun deepLTargetLanguageCode(languageTag: String): String {
 
 internal data class ProtectedTranslationText(
     val text: String,
-    private val replacements: Map<String, String>
+    private val replacements: Map<String, String>,
+    val hasTranslatableText: Boolean
 ) {
     fun restore(translatedText: String): String {
         var restored = translatedText
@@ -206,16 +222,116 @@ internal data class ProtectedTranslationText(
     }
 }
 
+/**
+ * A translation-safe representation of a Nostr note.
+ *
+ * Each physical line is sent as a separate DeepL text item. Original line
+ * separators and horizontal whitespace are reassembled locally, so DeepL
+ * cannot turn a standalone media URL into an inline URL or collapse a stanza.
+ * Lines containing only links/media are retained without being sent.
+ */
+internal class ProtectedTranslationDocument private constructor(
+    private val lines: List<Line>
+) {
+    private data class Line(
+        val leadingWhitespace: String,
+        val originalBody: String,
+        val trailingWhitespace: String,
+        val lineBreak: String,
+        val protectedBody: ProtectedTranslationText?
+    )
+
+    val texts: List<String>
+        get() = lines.mapNotNull { it.protectedBody?.text }
+
+    fun restore(translatedTexts: List<String>): String {
+        if (translatedTexts.size != texts.size) {
+            throw IOException("DeepL returned an incomplete translation.")
+        }
+        var translatedIndex = 0
+        return buildString {
+            lines.forEach { line ->
+                append(line.leadingWhitespace)
+                val protectedBody = line.protectedBody
+                if (protectedBody != null) {
+                    append(protectedBody.restore(translatedTexts[translatedIndex++]))
+                } else {
+                    append(line.originalBody)
+                }
+                append(line.trailingWhitespace)
+                append(line.lineBreak)
+            }
+        }
+    }
+
+    companion object {
+        fun from(sourceText: String): ProtectedTranslationDocument {
+            val lines = mutableListOf<Line>()
+            var start = 0
+
+            while (start < sourceText.length) {
+                var lineEnd = start
+                while (lineEnd < sourceText.length &&
+                    sourceText[lineEnd] != '\n' && sourceText[lineEnd] != '\r'
+                ) {
+                    lineEnd++
+                }
+
+                val originalLine = sourceText.substring(start, lineEnd)
+                var separatorEnd = lineEnd
+                if (separatorEnd < sourceText.length) {
+                    if (sourceText[separatorEnd] == '\r' &&
+                        separatorEnd + 1 < sourceText.length &&
+                        sourceText[separatorEnd + 1] == '\n'
+                    ) {
+                        separatorEnd += 2
+                    } else {
+                        separatorEnd++
+                    }
+                }
+                val lineBreak = sourceText.substring(lineEnd, separatorEnd)
+
+                val leading = originalLine.takeWhile { it == ' ' || it == '\t' }
+                val afterLeading = originalLine.drop(leading.length)
+                val trailing = afterLeading.takeLastWhile { it == ' ' || it == '\t' }
+                val body = if (trailing.isEmpty()) afterLeading else {
+                    afterLeading.dropLast(trailing.length)
+                }
+                val protected = if (body.isNotEmpty()) {
+                    TranslationTextProtector.protect(body).takeIf { it.hasTranslatableText }
+                } else {
+                    null
+                }
+
+                lines += Line(leading, body, trailing, lineBreak, protected)
+                start = separatorEnd
+            }
+
+            // No synthetic empty line is needed after a trailing line break.
+            if (sourceText.isEmpty()) {
+                lines += Line("", "", "", "", null)
+            }
+            return ProtectedTranslationDocument(lines)
+        }
+    }
+}
+
 internal object TranslationTextProtector {
     private val patterns = listOf(
-        Regex("""https?://[^\s<>]+""", RegexOption.IGNORE_CASE),
+        Regex("""(?:https?|wss?)://[^\s<>]+""", RegexOption.IGNORE_CASE),
+        Regex("""\bwww\.[^\s<>]+""", RegexOption.IGNORE_CASE),
         Regex(
             """\b(?:nostr:)?(?:npub|nprofile|note|nevent|naddr|nrelay|nsec|ncryptsec)1[023456789acdefghjklmnpqrstuvwxyz]{10,}\b""",
             RegexOption.IGNORE_CASE
         ),
-        Regex("""\b(?:lnbc|lntb|lnbcrt|lnurl|lno)[0-9a-z]+\b""", RegexOption.IGNORE_CASE),
+        Regex("""\b(?:lightning:)?(?:lnbc|lntb|lnbcrt|lnurl|lno)[0-9a-z]+\b""", RegexOption.IGNORE_CASE),
+        Regex("""(?:nostr:)?noffer1[023456789acdefghjklmnpqrstuvwxyz]{20,}""", RegexOption.IGNORE_CASE),
+        Regex("""(?<![\p{L}\p{N}_@.])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:/[^\s<>]*)?""", RegexOption.IGNORE_CASE),
         Regex("""(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+""")
     )
+
+    fun protectDocument(sourceText: String): ProtectedTranslationDocument =
+        ProtectedTranslationDocument.from(sourceText)
 
     fun protect(sourceText: String): ProtectedTranslationText {
         val replacements = linkedMapOf<String, String>()
@@ -227,6 +343,14 @@ internal object TranslationTextProtector {
                 marker
             }
         }
-        return ProtectedTranslationText(protectedText, replacements)
+        var prose = sourceText
+        patterns.forEach { pattern ->
+            prose = pattern.replace(prose) { "" }
+        }
+        return ProtectedTranslationText(
+            text = protectedText,
+            replacements = replacements,
+            hasTranslatableText = prose.any { it.isLetter() }
+        )
     }
 }

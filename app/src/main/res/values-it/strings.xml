@@ -115,6 +115,7 @@
     <string name="btn_unpin_from_profile">Rimuovi dal Profilo</string>
     <string name="btn_share">Condividi</string>
     <string name="btn_copy_note_id">Copia ID Nota</string>
+    <string name="btn_copy_note_text">Copia testo della nota</string>
     <string name="btn_copy_note_json">Copia JSON Nota</string>
     <string name="btn_hide">Nascondi</string>
     <string name="btn_retweet">Condividi</string>

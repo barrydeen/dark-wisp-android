@@ -111,9 +111,26 @@ class TranslationRepository(context: Context) {
                     }
 
                     InterfacePreferences.TranslationEngine.ON_DEVICE -> {
+                        // ML Kit can rewrite line breaks and media URLs when given a
+                        // whole Nostr note. Translate only prose segments, then restore
+                        // the exact original layout before rendering the inline result.
+                        val document = TranslationTextProtector.protectDocument(
+                            content,
+                            preserveCustomEmojiShortcodes = true
+                        )
+                        if (document.texts.isEmpty() || document.languageIdentificationText.isBlank()) {
+                            publish(
+                                TranslationState(
+                                    status = TranslationStatus.ERROR,
+                                    errorMessage = "There is no text to translate."
+                                )
+                            )
+                            return@launch
+                        }
+
                         val identifier = LanguageIdentification.getClient()
                         val detectedTag = try {
-                            identifier.identifyLanguage(content).await()
+                            identifier.identifyLanguage(document.languageIdentificationText).await()
                         } finally {
                             identifier.close()
                         }
@@ -185,7 +202,10 @@ class TranslationRepository(context: Context) {
                                     targetLanguage = targetDisplayName
                                 )
                             )
-                            translator.translate(content).await()
+                            val translatedLines = document.texts.map { line ->
+                                translator.translate(line).await()
+                            }
+                            document.restore(translatedLines)
                         } finally {
                             translator.close()
                         }

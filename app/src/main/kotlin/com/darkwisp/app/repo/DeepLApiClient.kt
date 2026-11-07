@@ -206,7 +206,8 @@ internal fun deepLTargetLanguageCode(languageTag: String): String {
 internal data class ProtectedTranslationText(
     val text: String,
     private val replacements: Map<String, String>,
-    val hasTranslatableText: Boolean
+    val hasTranslatableText: Boolean,
+    val languageIdentificationText: String
 ) {
     fun restore(translatedText: String): String {
         var restored = translatedText
@@ -214,7 +215,7 @@ internal data class ProtectedTranslationText(
             val markerRegex = Regex(Regex.escape(marker), RegexOption.IGNORE_CASE)
             val occurrences = markerRegex.findAll(restored).count()
             if (occurrences != 1) {
-                throw IOException("DeepL changed a protected link or Nostr reference; the translation was not applied.")
+                throw IOException("Translation changed a protected link or Nostr reference; the translation was not applied.")
             }
             restored = markerRegex.replace(restored) { original }
         }
@@ -244,6 +245,10 @@ internal class ProtectedTranslationDocument private constructor(
     val texts: List<String>
         get() = lines.mapNotNull { it.protectedBody?.text }
 
+    /** Plain prose only, used for on-device language identification. */
+    val languageIdentificationText: String
+        get() = lines.mapNotNull { it.protectedBody?.languageIdentificationText }.joinToString("\n")
+
     fun restore(translatedTexts: List<String>): String {
         if (translatedTexts.size != texts.size) {
             throw IOException("DeepL returned an incomplete translation.")
@@ -265,7 +270,10 @@ internal class ProtectedTranslationDocument private constructor(
     }
 
     companion object {
-        fun from(sourceText: String): ProtectedTranslationDocument {
+        fun from(
+            sourceText: String,
+            preserveCustomEmojiShortcodes: Boolean
+        ): ProtectedTranslationDocument {
             val lines = mutableListOf<Line>()
             var start = 0
 
@@ -298,7 +306,10 @@ internal class ProtectedTranslationDocument private constructor(
                     afterLeading.dropLast(trailing.length)
                 }
                 val protectedText = if (body.isNotEmpty()) {
-                    TranslationTextProtector.protect(body).takeIf { it.hasTranslatableText }
+                    TranslationTextProtector.protect(
+                        body,
+                        preserveCustomEmojiShortcodes
+                    ).takeIf { it.hasTranslatableText }
                 } else {
                     null
                 }
@@ -317,6 +328,9 @@ internal class ProtectedTranslationDocument private constructor(
 }
 
 internal object TranslationTextProtector {
+    private val customEmojiShortcodePattern =
+        Regex(""":[a-zA-Z_][a-zA-Z0-9_-]*:""")
+
     private val patterns = listOf(
         Regex("""(?:https?|wss?)://[^\s<>]+""", RegexOption.IGNORE_CASE),
         Regex("""\bwww\.[^\s<>]+""", RegexOption.IGNORE_CASE),
@@ -330,13 +344,24 @@ internal object TranslationTextProtector {
         Regex("""(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+""")
     )
 
-    fun protectDocument(sourceText: String): ProtectedTranslationDocument =
-        ProtectedTranslationDocument.from(sourceText)
+    fun protectDocument(
+        sourceText: String,
+        preserveCustomEmojiShortcodes: Boolean = false
+    ): ProtectedTranslationDocument =
+        ProtectedTranslationDocument.from(sourceText, preserveCustomEmojiShortcodes)
 
-    fun protect(sourceText: String): ProtectedTranslationText {
+    fun protect(
+        sourceText: String,
+        preserveCustomEmojiShortcodes: Boolean = false
+    ): ProtectedTranslationText {
+        val activePatterns = if (preserveCustomEmojiShortcodes) {
+            patterns + customEmojiShortcodePattern
+        } else {
+            patterns
+        }
         val replacements = linkedMapOf<String, String>()
         var protectedText = sourceText
-        patterns.forEach { pattern ->
+        activePatterns.forEach { pattern ->
             protectedText = pattern.replace(protectedText) { match ->
                 val marker = "ZXQWISP" + replacements.size + "TOKEN"
                 replacements[marker] = match.value
@@ -344,13 +369,14 @@ internal object TranslationTextProtector {
             }
         }
         var prose = sourceText
-        patterns.forEach { pattern ->
+        activePatterns.forEach { pattern ->
             prose = pattern.replace(prose) { "" }
         }
         return ProtectedTranslationText(
             text = protectedText,
             replacements = replacements,
-            hasTranslatableText = prose.any { it.isLetter() }
+            hasTranslatableText = prose.any { it.isLetter() },
+            languageIdentificationText = prose
         )
     }
 }

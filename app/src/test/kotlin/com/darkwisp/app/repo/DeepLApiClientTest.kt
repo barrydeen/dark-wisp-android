@@ -79,6 +79,37 @@ class DeepLApiClientTest {
     }
 
     @Test
+    fun mlKitDocumentTranslationPreservesCustomEmojisMediaAndOriginalLayout() {
+        val original = "First line :paintbrush: with https://example.com/photo.jpg\\n" +
+            "https://example.com/standalone.png\\n" +
+            "\\n" +
+            "Second line mentions example.org and #Nostr\\n"
+
+        val document = TranslationTextProtector.protectDocument(
+            original,
+            preserveCustomEmojiShortcodes = true
+        )
+        assertEquals(2, document.texts.size)
+        assertEquals(
+            "First line  with \\nSecond line mentions  ",
+            document.languageIdentificationText
+        )
+
+        val translated = document.texts.map { text ->
+            text.replace("First line", "Prima riga")
+                .replace("Second line mentions", "La seconda riga cita")
+        }
+
+        assertEquals(
+            "Prima riga :paintbrush: with https://example.com/photo.jpg\\n" +
+                "https://example.com/standalone.png\\n" +
+                "\\n" +
+                "La seconda riga cita example.org and #Nostr\\n",
+            document.restore(translated)
+        )
+    }
+
+    @Test
     fun documentWithOnlyMediaAndWhitespaceRequiresNoDeepLTextItems() {
         val original = "https://example.com/image.jpg\n\n  https://example.com/another.png  "
         val document = TranslationTextProtector.protectDocument(original)

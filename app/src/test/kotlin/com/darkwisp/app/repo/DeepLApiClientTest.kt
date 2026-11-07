@@ -42,11 +42,11 @@ class DeepLApiClientTest {
 
     @Test
     fun documentTranslationPreservesOriginalLinesBlankLinesAndMediaOnlyLines() {
-        val original = "A sentence with https://example.com/photo.jpg\\n" +
-            "https://example.com/standalone.png\\n" +
-            "\\n" +
-            "Second stanza line one\\n" +
-            "Second stanza line two\\r\\n"
+        val original = "A sentence with https://example.com/photo.jpg\n" +
+            "https://example.com/standalone.png\n" +
+            "\n" +
+            "Second stanza line one\n" +
+            "Second stanza line two\r\n"
 
         val document = TranslationTextProtector.protectDocument(original)
         assertEquals(3, document.texts.size)
@@ -58,11 +58,11 @@ class DeepLApiClientTest {
         }
 
         assertEquals(
-            "Una frase con https://example.com/photo.jpg\\n" +
-                "https://example.com/standalone.png\\n" +
-                "\\n" +
-                "Secondo verso uno\\n" +
-                "Secondo verso due\\r\\n",
+            "Una frase con https://example.com/photo.jpg\n" +
+                "https://example.com/standalone.png\n" +
+                "\n" +
+                "Secondo verso uno\n" +
+                "Secondo verso due\r\n",
             document.restore(translated)
         )
     }
@@ -80,7 +80,7 @@ class DeepLApiClientTest {
 
     @Test
     fun documentWithOnlyMediaAndWhitespaceRequiresNoDeepLTextItems() {
-        val original = "https://example.com/image.jpg\\n\\n  https://example.com/another.png  "
+        val original = "https://example.com/image.jpg\n\n  https://example.com/another.png  "
         val document = TranslationTextProtector.protectDocument(original)
 
         assertEquals(0, document.texts.size)

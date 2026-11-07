@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip02
+import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip51
@@ -72,8 +73,12 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
     private val _repostAuthors = mutableMapOf<String, String>()
     val repostAuthors: Map<String, String> get() = _repostAuthors
 
-    // Track repost sort time: inner event id -> repost wrapper created_at
+    // Track each profile repost event so NIP-09 can remove the correct embedded note.
     private val _repostSortTime = mutableMapOf<String, Long>()
+    private val _repostEventIdsByTarget = mutableMapOf<String, MutableSet<String>>()
+    private val _repostEventTargets = mutableMapOf<String, String>()
+    private val _repostEventTimes = mutableMapOf<String, MutableMap<String, Long>>()
+    private val _deletedRepostEventIds = mutableSetOf<String>()
 
     private val _followList = MutableStateFlow<List<Nip02.FollowEntry>>(emptyList())
     val followList: StateFlow<List<Nip02.FollowEntry>> = _followList
@@ -176,6 +181,12 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         paymentTargetRepo: PaymentTargetRepository? = null
     ) {
         targetPubkey = pubkey
+        _repostAuthors.clear()
+        _repostSortTime.clear()
+        _repostEventIdsByTarget.clear()
+        _repostEventTargets.clear()
+        _repostEventTimes.clear()
+        _deletedRepostEventIds.clear()
         eventRepoRef = eventRepo
         relayPoolRef = relayPool
         outboxRouterRef = outboxRouter
@@ -225,7 +236,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
         // Request fresh profile, posts, follow list, and relay list
         val profileFilter = Filter(kinds = listOf(0), authors = listOf(pubkey), limit = 1)
-        val postsFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(pubkey), limit = 50)
+        val postsFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 5, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(pubkey), limit = 50)
         // Gallery posts can be old and curated — fetch separately with no since filter, higher limit
         val galleryFilter = Filter(kinds = listOf(20, 21, 22), authors = listOf(pubkey), limit = 100)
         val followFilter = Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1)
@@ -295,6 +306,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // Only process events from our own subscriptions
                 if (subscriptionId !in SUB_IDS && !subscriptionId.startsWith("followprofiles") && !subscriptionId.startsWith("user-engage") && subscriptionId != "userposts-more" && subscriptionId != "userreplies-more") return@collect
+                if (event.id in _deletedRepostEventIds) return@collect
 
                 // Route engagement events — reactions, zaps, reply counts
                 if (subscriptionId.startsWith("user-engage")) {
@@ -374,16 +386,67 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                                 _rootNotes.value = current
                             }
                         }
+                        5 -> {
+                            // Feed the deletion through the shared repository as well, so
+                            // the timeline and repost counters reconcile with this profile.
+                            eventRepo.addEvent(event)
+                            val currentRoots = _rootNotes.value.toMutableList()
+                            val currentReplies = _replies.value.toMutableList()
+                            var rootsChanged = false
+                            var repliesChanged = false
+
+                            for (deletedId in Nip09.getDeletedEventIds(event)) {
+                                _deletedRepostEventIds.add(deletedId)
+                                val targetId = _repostEventTargets.remove(deletedId)
+                                if (targetId != null) {
+                                    val repostIds = _repostEventIdsByTarget[targetId]
+                                    repostIds?.remove(deletedId)
+                                    _repostEventTimes[targetId]?.remove(deletedId)
+                                    if (repostIds.isNullOrEmpty()) {
+                                        _repostEventIdsByTarget.remove(targetId)
+                                        _repostEventTimes.remove(targetId)
+                                        _repostAuthors.remove(targetId)
+                                        _repostSortTime.remove(targetId)
+                                        val original = currentRoots.firstOrNull { it.id == targetId }
+                                            ?: eventRepo.getEvent(targetId)
+                                        // If the embedded note was authored by this profile,
+                                        // it remains a normal note after its repost is undone.
+                                        if (original?.pubkey != pubkey) {
+                                            if (currentRoots.removeAll { it.id == targetId }) rootsChanged = true
+                                        }
+                                    } else {
+                                        _repostSortTime[targetId] =
+                                            _repostEventTimes[targetId]?.values?.maxOrNull() ?: 0L
+                                    }
+                                    rootsChanged = true
+                                } else {
+                                    if (currentRoots.removeAll { it.id == deletedId }) rootsChanged = true
+                                    if (currentReplies.removeAll { it.id == deletedId }) repliesChanged = true
+                                }
+                            }
+
+                            if (rootsChanged) {
+                                currentRoots.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
+                                _rootNotes.value = currentRoots
+                            }
+                            if (repliesChanged) _replies.value = currentReplies
+                        }
                         6 -> {
-                            eventRepo.cacheEvent(event)
+                            if (event.id in _deletedRepostEventIds) return@collect
+                            eventRepo.addEvent(event)
                             if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
-                            // Show the reposted event in profile's root notes
+                            // Show the reposted event in profile's root notes and retain the
+                            // wrapper IDs/timestamps so a later kind-5 deletion can undo it.
                             if (event.content.isNotBlank()) {
                                 try {
                                     val inner = NostrEvent.fromJson(event.content)
                                     eventRepo.cacheEvent(inner)
+                                    _repostEventTargets[event.id] = inner.id
+                                    _repostEventIdsByTarget.getOrPut(inner.id) { mutableSetOf() }.add(event.id)
+                                    val times = _repostEventTimes.getOrPut(inner.id) { mutableMapOf() }
+                                    times[event.id] = event.created_at
                                     _repostAuthors[inner.id] = event.pubkey
-                                    _repostSortTime[inner.id] = event.created_at
+                                    _repostSortTime[inner.id] = times.values.maxOrNull() ?: event.created_at
                                     val current = _rootNotes.value.toMutableList()
                                     current.removeAll { it.id == inner.id }
                                     current.add(inner)
@@ -544,7 +607,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         if (oldestNoteTimestamp == Long.MAX_VALUE) { isLoadingMoreNotes = false; return }
 
         val pool = relayPoolRef ?: run { isLoadingMoreNotes = false; return }
-        val filter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(targetPubkey), until = oldestNoteTimestamp - 1, limit = 50)
+        val filter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 5, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(targetPubkey), until = oldestNoteTimestamp - 1, limit = 50)
 
         val router = outboxRouterRef
         if (router != null) {

@@ -74,6 +74,7 @@ import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.ExchangeRateRepository
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.InterfacePreferences
+import com.darkwisp.app.ui.component.TranslationSettingsSection
 import com.darkwisp.app.repo.LocaleRepository
 import com.darkwisp.app.ui.theme.ThemePreset
 import com.darkwisp.app.ui.theme.Themes
@@ -216,6 +217,10 @@ fun InterfaceScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(24.dp))
+
+            TranslationSettingsSection(interfacePrefs)
 
             Spacer(Modifier.height(24.dp))
 

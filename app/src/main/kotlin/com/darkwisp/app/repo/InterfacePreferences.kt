@@ -1,8 +1,18 @@
 package com.darkwisp.app.repo
 
 import android.content.Context
+import android.content.res.Resources
 
 class InterfacePreferences(context: Context) {
+    enum class TranslationEngine(val key: String) {
+        ON_DEVICE("on_device"),
+        DEEPL("deepl");
+
+        companion object {
+            fun fromKey(key: String?): TranslationEngine =
+                values().firstOrNull { it.key == key } ?: ON_DEVICE
+        }
+    }
     enum class MediaLayoutStyle(val key: String) {
         GALLERY("gallery"),
         STACK("stack");
@@ -68,6 +78,26 @@ class InterfacePreferences(context: Context) {
         NotificationFeedStyle.fromKey(prefs.getString(KEY_NOTIFICATION_FEED_STYLE, null))
     fun setNotificationFeedStyle(style: NotificationFeedStyle) =
         prefs.edit().putString(KEY_NOTIFICATION_FEED_STYLE, style.key).apply()
+
+    /** Translation target is independent of the app's display language. */
+    fun getTranslationTargetLanguage(): String =
+        prefs.getString("translation_target_language", "system") ?: "system"
+
+    fun setTranslationTargetLanguage(language: String) =
+        prefs.edit().putString("translation_target_language", language).apply()
+
+    fun getResolvedTranslationTargetLanguage(): String {
+        val selected = getTranslationTargetLanguage()
+        if (selected != "system") return selected
+        return Resources.getSystem().configuration.locales[0]?.language
+            ?.takeIf { it.isNotBlank() } ?: "en"
+    }
+
+    fun getTranslationEngine(): TranslationEngine =
+        TranslationEngine.fromKey(prefs.getString("translation_engine", null))
+
+    fun setTranslationEngine(engine: TranslationEngine) =
+        prefs.edit().putString("translation_engine", engine.key).apply()
 
     fun getLanguage(): String = prefs.getString("language", "system") ?: "system"
     fun setLanguage(language: String) = prefs.edit().putString("language", language).apply()
@@ -183,6 +213,8 @@ class InterfacePreferences(context: Context) {
             .remove("post_undo_timer_seconds")
             .remove("post_undo_timer_for_replies")
             .remove("media_layout_style")
+            .remove("translation_target_language")
+            .remove("translation_engine")
             .remove(KEY_NOTIFICATION_FEED_STYLE)
             .apply()
     }

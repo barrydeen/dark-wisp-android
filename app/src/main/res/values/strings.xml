@@ -953,4 +953,27 @@
     <string name="alt_editor_chars_remaining">%1$d remaining</string>
     <string name="alt_editor_clear">Clear description</string>
 
+
+    <!-- Post translation -->
+    <string name="translation_settings_title">Post translation</string>
+    <string name="translation_settings_subtitle">Choose how notes are translated and into which language.</string>
+    <string name="translation_target_language">Translation language</string>
+    <string name="translation_engine">Translation engine</string>
+    <string name="translation_engine_mlkit">On-device (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">DeepL API key</string>
+    <string name="translation_deepl_privacy">The text of the selected post is sent to DeepL. Links, Nostr references, Lightning invoices and hashtags are protected.</string>
+    <string name="translation_deepl_save_key">Save key</string>
+    <string name="translation_deepl_test_key">Test key</string>
+    <string name="translation_deepl_remove_key">Remove key</string>
+    <string name="translation_deepl_key_saved">API key saved securely on this device.</string>
+    <string name="translation_deepl_key_removed">API key removed.</string>
+    <string name="translation_deepl_testing">Checking DeepL API access…</string>
+    <string name="translation_deepl_usage">Connection verified · %1$s / %2$s characters used</string>
+    <string name="translation_deepl_storage_error">Secure storage is unavailable on this device.</string>
+    <string name="translation_deepl_test_error">Could not verify the API key.</string>
+    <string name="translation_deepl_key_missing">Add a DeepL API key in Interface settings to use DeepL.</string>
+    <string name="translation_deepl_show_key">Show API key</string>
+    <string name="translation_deepl_hide_key">Hide API key</string>
+
 </resources>

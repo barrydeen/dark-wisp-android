@@ -90,11 +90,23 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
         signer: NostrSigner? = null
     ): String = withContext(Dispatchers.IO) {
         val sha256Hex = Blossom.sha256Hex(fileBytes)
-        val authHeader = if (signer != null) {
-            Blossom.createUploadAuth(signer, sha256Hex)
+        val mediaAuthHeader = if (signer != null) {
+            Blossom.createMediaAuth(signer, sha256Hex)
         } else {
             val keypair = keyRepo.getKeypair() ?: throw IllegalStateException("Not logged in")
-            Blossom.createUploadAuth(keypair.privkey, keypair.pubkey, sha256Hex)
+            Blossom.createMediaAuth(keypair.privkey, keypair.pubkey, sha256Hex)
+        }
+        var uploadAuthHeader: String? = null
+        suspend fun getUploadAuthHeader(): String {
+            uploadAuthHeader?.let { return it }
+            val header = if (signer != null) {
+                Blossom.createUploadAuth(signer, sha256Hex)
+            } else {
+                val keypair = keyRepo.getKeypair() ?: throw IllegalStateException("Not logged in")
+                Blossom.createUploadAuth(keypair.privkey, keypair.pubkey, sha256Hex)
+            }
+            uploadAuthHeader = header
+            return header
         }
         val mediaType = mimeType.toMediaType()
         val body = fileBytes.toRequestBody(mediaType)
@@ -111,7 +123,9 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
         var lastException: Exception? = null
         for (server in candidates) {
             try {
-                return@withContext uploadToServer(server, body, authHeader, mimeType)
+                return@withContext uploadToServer(
+                    server, body, mediaAuthHeader, mimeType, ::getUploadAuthHeader
+                )
             } catch (e: Exception) {
                 lastException = e
             }
@@ -119,37 +133,59 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
         throw lastException ?: Exception("Upload failed: no servers available")
     }
 
-    private fun uploadToServer(
+    private suspend fun uploadToServer(
         server: String,
         body: okhttp3.RequestBody,
-        authHeader: String,
-        mimeType: String
+        mediaAuthHeader: String,
+        mimeType: String,
+        getUploadAuthHeader: suspend () -> String
     ): String {
-        // Try BUD-05 /media first (strips EXIF), fall back to /upload on 404
-        for (path in listOf("/media", "/upload")) {
-            val url = server.trimEnd('/') + path
-            val request = Request.Builder()
-                .url(url)
-                .put(body)
-                .header("Authorization", authHeader)
-                .header("Content-Type", mimeType)
-                .build()
+        // BUD-05 uses a distinct kind 24242 action (t=media) from BUD-02 (t=upload).
+        // If the server does not implement /media, fall back to /upload with its own token.
+        val mediaUrl = server.trimEnd('/') + "/media"
+        val mediaResult = uploadToEndpoint(
+            mediaUrl,
+            body,
+            mediaAuthHeader,
+            mimeType,
+            unsupportedStatusCodes = setOf(404, 405, 501)
+        )
+        if (mediaResult != null) return mediaResult
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val responseBody = response.body?.string()
-                    ?: throw Exception("Empty response")
-                val responseJson = json.parseToJsonElement(responseBody)
-                val urlField = (responseJson as? kotlinx.serialization.json.JsonObject)
-                    ?.get("url")
-                    ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                    ?: throw Exception("No url in response")
-                return urlField
+        val uploadUrl = server.trimEnd('/') + "/upload"
+        return uploadToEndpoint(uploadUrl, body, getUploadAuthHeader(), mimeType)
+            ?: throw Exception("Upload failed: unsupported /upload endpoint")
+    }
+
+    private fun uploadToEndpoint(
+        url: String,
+        body: okhttp3.RequestBody,
+        authHeader: String,
+        mimeType: String,
+        unsupportedStatusCodes: Set<Int> = emptySet()
+    ): String? {
+        val request = Request.Builder()
+            .url(url)
+            .put(body)
+            .header("Authorization", authHeader)
+            .header("Content-Type", mimeType)
+            .build()
+
+        return httpClient.newCall(request).execute().use { response ->
+            when {
+                response.isSuccessful -> {
+                    val responseBody = response.body?.string()
+                        ?: throw Exception("Empty response")
+                    val responseJson = json.parseToJsonElement(responseBody)
+                    (responseJson as? kotlinx.serialization.json.JsonObject)
+                        ?.get("url")
+                        ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                        ?: throw Exception("No url in response")
+                }
+                response.code in unsupportedStatusCodes -> null
+                else -> throw Exception("Upload failed: ${response.code} ${response.message}")
             }
-            if (response.code == 404 && path == "/media") continue
-            throw Exception("Upload failed: ${response.code} ${response.message}")
         }
-        throw Exception("Upload failed")
     }
 
     data class EncryptedUploadResult(

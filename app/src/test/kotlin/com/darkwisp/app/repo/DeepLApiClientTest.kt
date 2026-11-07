@@ -39,4 +39,51 @@ class DeepLApiClientTest {
             protected.restore("Translated text without the marker")
         }
     }
+
+    @Test
+    fun documentTranslationPreservesOriginalLinesBlankLinesAndMediaOnlyLines() {
+        val original = "A sentence with https://example.com/photo.jpg\\n" +
+            "https://example.com/standalone.png\\n" +
+            "\\n" +
+            "Second stanza line one\\n" +
+            "Second stanza line two\\r\\n"
+
+        val document = TranslationTextProtector.protectDocument(original)
+        assertEquals(3, document.texts.size)
+
+        val translated = document.texts.map { text ->
+            text.replace("A sentence with", "Una frase con")
+                .replace("Second stanza line one", "Secondo verso uno")
+                .replace("Second stanza line two", "Secondo verso due")
+        }
+
+        assertEquals(
+            "Una frase con https://example.com/photo.jpg\\n" +
+                "https://example.com/standalone.png\\n" +
+                "\\n" +
+                "Secondo verso uno\\n" +
+                "Secondo verso due\\r\\n",
+            document.restore(translated)
+        )
+    }
+
+    @Test
+    fun protectedDocumentKeepsLinksNostrReferencesAndLightningOffersVerbatim() {
+        val original = "Visit example.com and wss://relay.example.com, " +
+            "nostr:note1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq, " +
+            "noffer1qqqqqqqqqqqqqqqqqqqqqqqqqq and #Bitcoin."
+
+        val protected = TranslationTextProtector.protect(original)
+        assertNotEquals(original, protected.text)
+        assertEquals(original, protected.restore(protected.text))
+    }
+
+    @Test
+    fun documentWithOnlyMediaAndWhitespaceRequiresNoDeepLTextItems() {
+        val original = "https://example.com/image.jpg\\n\\n  https://example.com/another.png  "
+        val document = TranslationTextProtector.protectDocument(original)
+
+        assertEquals(0, document.texts.size)
+        assertEquals(original, document.restore(emptyList()))
+    }
 }

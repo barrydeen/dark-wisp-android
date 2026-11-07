@@ -80,10 +80,10 @@ class DeepLApiClientTest {
 
     @Test
     fun mlKitDocumentTranslationPreservesCustomEmojisMediaAndOriginalLayout() {
-        val original = "First line :paintbrush: with https://example.com/photo.jpg\\n" +
-            "https://example.com/standalone.png\\n" +
-            "\\n" +
-            "Second line mentions example.org and #Nostr\\n"
+        val original = "First line :paintbrush: with https://example.com/photo.jpg\n" +
+            "https://example.com/standalone.png\n" +
+            "\n" +
+            "Second line mentions example.org and #Nostr\n"
 
         val document = TranslationTextProtector.protectDocument(
             original,
@@ -91,7 +91,7 @@ class DeepLApiClientTest {
         )
         assertEquals(2, document.texts.size)
         assertEquals(
-            "First line  with \\nSecond line mentions  ",
+            "First line  with \nSecond line mentions  and ",
             document.languageIdentificationText
         )
 
@@ -101,10 +101,10 @@ class DeepLApiClientTest {
         }
 
         assertEquals(
-            "Prima riga :paintbrush: with https://example.com/photo.jpg\\n" +
-                "https://example.com/standalone.png\\n" +
-                "\\n" +
-                "La seconda riga cita example.org and #Nostr\\n",
+            "Prima riga :paintbrush: with https://example.com/photo.jpg\n" +
+                "https://example.com/standalone.png\n" +
+                "\n" +
+                "La seconda riga cita example.org and #Nostr\n",
             document.restore(translated)
         )
     }

@@ -80,7 +80,7 @@ class DeepLApiClient(
                 throw IOException("DeepL returned an unreadable translation response.", e)
             }
             if (response.translations.size != batch.size) {
-                throw IOException("DeepL returned an incomplete translation.")
+                throw IOException("The translation engine returned an incomplete result.")
             }
             response.translations.forEach { translated ->
                 translatedTexts += translated.text
@@ -226,7 +226,7 @@ internal data class ProtectedTranslationText(
 /**
  * A translation-safe representation of a Nostr note.
  *
- * Each physical line is sent as a separate DeepL text item. Original line
+ * Each physical line is sent as a separate translation text item. Original line
  * separators and horizontal whitespace are reassembled locally, so DeepL
  * cannot turn a standalone media URL into an inline URL or collapse a stanza.
  * Lines containing only links/media are retained without being sent.

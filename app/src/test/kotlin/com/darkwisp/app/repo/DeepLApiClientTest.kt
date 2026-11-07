@@ -25,7 +25,7 @@ class DeepLApiClientTest {
 
     @Test
     fun protectedNostrLinksInvoicesAndHashtagsAreRestoredExactly() {
-        val original = "Read https://example.com/post?q=1, #Bitcoin nostr:note1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq and lnbc1234567890abc."
+        val original = "Read https://example.com/post?q=1, #Bitcoin nostr:note1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq and lnbc1234567890abc and lno1qqqqqqqqqqqqqqqq."
         val protected = TranslationTextProtector.protect(original)
 
         assertNotEquals(original, protected.text)

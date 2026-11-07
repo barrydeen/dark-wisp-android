@@ -41,7 +41,7 @@ class DeepLApiClient(
         .callTimeout(35, TimeUnit.SECONDS)
         .build()
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     suspend fun translate(
         apiKey: String,
@@ -213,7 +213,7 @@ internal object TranslationTextProtector {
             """\b(?:nostr:)?(?:npub|nprofile|note|nevent|naddr|nrelay|nsec|ncryptsec)1[023456789acdefghjklmnpqrstuvwxyz]{10,}\b""",
             RegexOption.IGNORE_CASE
         ),
-        Regex("""\b(?:lnbc|lntb|lnbcrt|lnurl)[0-9a-z]+\b""", RegexOption.IGNORE_CASE),
+        Regex("""\b(?:lnbc|lntb|lnbcrt|lnurl|lno)[0-9a-z]+\b""", RegexOption.IGNORE_CASE),
         Regex("""(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+""")
     )
 

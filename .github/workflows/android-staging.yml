@@ -25,8 +25,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run unit tests and build staging APK
-        run: ./gradlew --no-daemon testStagingUnitTest assembleStaging
+      - name: Clean previous build outputs
+        run: ./gradlew --no-daemon --no-build-cache clean
+
+      - name: Run unit tests and build staging APK with stacktrace
+        run: ./gradlew --no-daemon --no-build-cache testStagingUnitTest assembleStaging --stacktrace --info
 
       - name: Upload staging APK
         uses: actions/upload-artifact@v4

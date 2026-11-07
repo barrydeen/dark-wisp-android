@@ -952,5 +952,7 @@
     <string name="alt_editor_hint">Describe this image…</string>
     <string name="alt_editor_chars_remaining">%1$d remaining</string>
     <string name="alt_editor_clear">Clear description</string>
+
     <string name="btn_undo_repost">Undo repost</string>
+
 </resources>

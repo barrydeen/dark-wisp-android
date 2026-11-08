@@ -953,4 +953,9 @@
     <string name="alt_editor_chars_remaining">%1$d remaining</string>
     <string name="alt_editor_clear">Clear description</string>
 
+    <string name="tab_with_reply">With replies</string>
+    <string name="tab_more">More</string>
+    <string name="tab_text">Text</string>
+    <string name="tab_gallery">Gallery</string>
+    <string name="tab_polls">Polls</string>
 </resources>

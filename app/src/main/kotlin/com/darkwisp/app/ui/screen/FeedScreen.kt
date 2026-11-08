@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -60,8 +61,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -77,11 +76,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.darkwisp.app.nostr.FollowSet
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip69
@@ -875,189 +877,46 @@ fun FeedScreen(
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
-                CenterAlignedTopAppBar(
-                    // Compact: reserve the status-bar inset via
-                    // `windowInsetsPadding` (layout-time, no first-frame
-                    // snap) and clamp the content area to 48dp (was
-                    // Material's default 64dp). Disable the bar's
-                    // internal inset handling to avoid double-padding.
+                Column(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .height(48.dp),
-                    windowInsets = WindowInsets(0),
-                    title = {
-                                Box {
-                                    Surface(
-                                        onClick = { showFeedTypeDropdown = true },
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            val feedLabel = when (feedType) {
-                                                FeedType.FOR_YOU -> stringResource(R.string.tab_for_you)
-                                                FeedType.FOLLOWS -> stringResource(R.string.tab_follows)
-                                                FeedType.EXTENDED_FOLLOWS -> stringResource(R.string.tab_extended)
-                                                FeedType.RELAY -> if (selectedRelay != null) {
-                                                    selectedRelay!!.removePrefix("wss://").removeSuffix("/")
-                                                } else stringResource(R.string.tab_relay)
-                                                FeedType.LIST -> if (selectedList != null) {
-                                                    selectedList!!.name
-                                                } else stringResource(R.string.tab_list)
-                                                FeedType.TRENDING -> stringResource(R.string.tab_trending)
-                                            }
-                                            Text(
-                                                feedLabel,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                modifier = Modifier.widthIn(max = 140.dp)
-                                            )
-                                            Spacer(Modifier.width(4.dp))
-                                            Icon(
-                                                Icons.Default.ArrowDropDown,
-                                                contentDescription = "Change feed",
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-                                DropdownMenu(
-                                    expanded = showFeedTypeDropdown,
-                                    onDismissRequest = { showFeedTypeDropdown = false },
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_for_you)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            viewModel.setFeedType(FeedType.FOR_YOU)
-                                        },
-                                        trailingIcon = if (feedType == FeedType.FOR_YOU) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_follows)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            viewModel.setFeedType(FeedType.FOLLOWS)
-                                        },
-                                        trailingIcon = if (feedType == FeedType.FOLLOWS) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_extended)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            if (viewModel.extendedNetworkRepo.cachedNetwork.value == null) {
-                                                showSocialGraphDialog = true
-                                            } else {
-                                                viewModel.setFeedType(FeedType.EXTENDED_FOLLOWS)
-                                            }
-                                        },
-                                        trailingIcon = if (feedType == FeedType.EXTENDED_FOLLOWS) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_trending)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            viewModel.setFeedType(FeedType.TRENDING)
-                                        },
-                                        trailingIcon = if (feedType == FeedType.TRENDING) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_relay)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showRelayPicker = true
-                                        },
-                                        trailingIcon = if (feedType == FeedType.RELAY) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_list)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showListPicker = true
-                                        },
-                                        trailingIcon = if (feedType == FeedType.LIST) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_hashtags)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showHashtagPicker = true
-                                        }
-                                    )
-                                }
-                                }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
-                    ),
-                    navigationIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                ProfilePicture(url = userProfile?.picture, size = 32)
-                            }
-                            // Content type filter toggle — rotates through All → Notes → Gallery → Polls
-                            IconButton(
-                                onClick = {
-                                    val next = when (contentFilter) {
-                                        FeedContentFilter.ALL -> FeedContentFilter.TEXT_ONLY
-                                        FeedContentFilter.TEXT_ONLY -> FeedContentFilter.GALLERY_ONLY
-                                        FeedContentFilter.GALLERY_ONLY -> FeedContentFilter.POLLS_ONLY
-                                        FeedContentFilter.POLLS_ONLY -> FeedContentFilter.ALL
-                                    }
-                                    viewModel.setFeedContentFilter(next)
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                val (icon, tint) = when (contentFilter) {
-                                    // GridView = 2x2 of equal squares (matches iOS).
-                                    // Dashboard was 1 large + 3 small panels.
-                                    FeedContentFilter.ALL -> Icons.Outlined.GridView to MaterialTheme.colorScheme.onSurfaceVariant
-                                    FeedContentFilter.TEXT_ONLY -> Icons.AutoMirrored.Outlined.Article to MaterialTheme.colorScheme.primary
-                                    FeedContentFilter.GALLERY_ONLY -> Icons.Outlined.Photo to MaterialTheme.colorScheme.primary
-                                    FeedContentFilter.POLLS_ONLY -> Icons.Outlined.HowToVote to MaterialTheme.colorScheme.primary
-                                }
-                                Icon(icon, contentDescription = "Filter: ${contentFilter.name}", tint = tint, modifier = Modifier.size(22.dp))
-                            }
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { scope.launch { drawerState.open() } },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            ProfilePicture(url = userProfile?.picture, size = 32)
                         }
-                    },
-                    actions = {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(0.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FeedContentFilterIconTab(FeedContentFilter.ALL, contentFilter == FeedContentFilter.ALL,
+                                { viewModel.setFeedContentFilter(FeedContentFilter.ALL) }, Modifier.weight(1f))
+                            FeedContentFilterIconTab(FeedContentFilter.TEXT_ONLY, contentFilter == FeedContentFilter.TEXT_ONLY,
+                                { viewModel.setFeedContentFilter(FeedContentFilter.TEXT_ONLY) }, Modifier.weight(1f))
+                            FeedContentFilterIconTab(FeedContentFilter.GALLERY_ONLY, contentFilter == FeedContentFilter.GALLERY_ONLY,
+                                { viewModel.setFeedContentFilter(FeedContentFilter.GALLERY_ONLY) }, Modifier.weight(1f))
+                            FeedContentFilterIconTab(FeedContentFilter.POLLS_ONLY, contentFilter == FeedContentFilter.POLLS_ONLY,
+                                { viewModel.setFeedContentFilter(FeedContentFilter.POLLS_ONLY) }, Modifier.weight(1f))
+                        }
                         if (onlinePubkeys.isNotEmpty()) {
                             Surface(
                                 onClick = { showOnlineSheet = true },
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = WispThemeColors.repostColor
-                                    )
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.Person, contentDescription = null, modifier = Modifier.size(14.dp), tint = WispThemeColors.repostColor)
                                     Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        "${onlinePubkeys.size}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text("${onlinePubkeys.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             Spacer(Modifier.width(4.dp))
@@ -1068,40 +927,22 @@ fun FeedScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         Icons.Outlined.Hub,
                                         contentDescription = null,
                                         modifier = Modifier.size(14.dp),
-                                        tint = if (connectedCount > 0)
-                                            WispThemeColors.repostColor
-                                        else
-                                            androidx.compose.ui.graphics.Color(0xFFFF5252)
+                                        tint = if (connectedCount > 0) WispThemeColors.repostColor else androidx.compose.ui.graphics.Color(0xFFFF5252)
                                     )
                                     Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        "$connectedCount",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text("$connectedCount", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                            DropdownMenu(
-                                expanded = showRelayDropdown,
-                                onDismissRequest = { showRelayDropdown = false }
-                            ) {
+                            DropdownMenu(expanded = showRelayDropdown, onDismissRequest = { showRelayDropdown = false }) {
                                 val connectedUrls = viewModel.relayPool.getAllConnectedUrls()
                                 if (connectedUrls.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                "No relays connected",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        },
+                                        text = { Text("No relays connected", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                                         onClick = {}
                                     )
                                 } else {
@@ -1113,12 +954,7 @@ fun FeedScreen(
                                             if (count != null && count > 0) append(" ($count)")
                                         }
                                         DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    label,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            },
+                                            text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
                                             onClick = {
                                                 showRelayDropdown = false
                                                 viewModel.setSelectedRelay(url)
@@ -1130,7 +966,64 @@ fun FeedScreen(
                             }
                         }
                     }
-                )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FeedModeTab(stringResource(R.string.tab_for_you), feedType == FeedType.FOR_YOU,
+                            { viewModel.setFeedType(FeedType.FOR_YOU) }, modifier = Modifier.weight(1f), equalWidth = true)
+                        FeedModeTab(stringResource(R.string.tab_following), feedType == FeedType.FOLLOWS,
+                            { viewModel.setFeedType(FeedType.FOLLOWS) }, modifier = Modifier.weight(1f), equalWidth = true)
+                        FeedModeTab(stringResource(R.string.tab_with_reply), feedType == FeedType.WITH_REPLIES,
+                            { viewModel.setFeedType(FeedType.WITH_REPLIES) }, modifier = Modifier.weight(1f), equalWidth = true)
+                        Box(modifier = Modifier.weight(1f)) {
+                            FeedModeTab(
+                                stringResource(R.string.tab_more),
+                                feedType in setOf(FeedType.RELAY, FeedType.LIST, FeedType.TRENDING, FeedType.EXTENDED_FOLLOWS),
+                                { showFeedTypeDropdown = true },
+                                showChevron = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                equalWidth = true
+                            )
+                            DropdownMenu(
+                                expanded = showFeedTypeDropdown,
+                                onDismissRequest = { showFeedTypeDropdown = false },
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_trending)) },
+                                    onClick = { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.TRENDING) },
+                                    trailingIcon = if (feedType == FeedType.TRENDING) {{ Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_relay)) },
+                                    onClick = { showFeedTypeDropdown = false; showRelayPicker = true },
+                                    trailingIcon = if (feedType == FeedType.RELAY) {{ Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_list)) },
+                                    onClick = { showFeedTypeDropdown = false; showListPicker = true },
+                                    trailingIcon = if (feedType == FeedType.LIST) {{ Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_hashtags)) },
+                                    onClick = { showFeedTypeDropdown = false; showHashtagPicker = true }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_extended)) },
+                                    onClick = {
+                                        showFeedTypeDropdown = false
+                                        if (viewModel.extendedNetworkRepo.cachedNetwork.value == null) showSocialGraphDialog = true
+                                        else viewModel.setFeedType(FeedType.EXTENDED_FOLLOWS)
+                                    },
+                                    trailingIcon = if (feedType == FeedType.EXTENDED_FOLLOWS) {{ Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }} else null
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
             },
             floatingActionButton = {
                 val isScrolling = listState.isScrollInProgress
@@ -3474,6 +3367,126 @@ fun BroadcastStatusBar(
         }
     }
 }
+
+@Composable
+private fun FeedModeTab(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    showChevron: Boolean = false,
+    modifier: Modifier = Modifier,
+    equalWidth: Boolean = false
+) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+    val baseTextStyle = MaterialTheme.typography.labelLarge.copy(
+        fontSize = 15.sp,
+        fontWeight = fontWeight
+    )
+    val measuredTextWidth = textMeasurer.measure(
+        text = label,
+        style = baseTextStyle,
+        softWrap = false,
+        maxLines = 1
+    ).size.width
+
+    BoxWithConstraints(
+        modifier = modifier
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (equalWidth) 2.dp else 7.dp)
+    ) {
+        val availableTextWidthPx = (
+            (maxWidth.value - if (showChevron) 18f else 0f) * density.density
+        ).toInt().coerceAtLeast(1)
+        val fitScale = (availableTextWidthPx.toFloat() / measuredTextWidth.coerceAtLeast(1))
+            .coerceAtMost(1f)
+        val fittedFontSize = (15f * fitScale).coerceAtLeast(10f).sp
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    style = baseTextStyle.copy(fontSize = fittedFontSize),
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
+                )
+                if (showChevron) {
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (selected) {
+                Spacer(Modifier.height(3.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeedContentFilterIconTab(
+    filter: FeedContentFilter,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (icon, description) = when (filter) {
+        FeedContentFilter.ALL -> Icons.Outlined.GridView to stringResource(R.string.tab_all)
+        FeedContentFilter.TEXT_ONLY -> Icons.AutoMirrored.Outlined.Article to stringResource(R.string.tab_text)
+        FeedContentFilter.GALLERY_ONLY -> Icons.Outlined.Photo to stringResource(R.string.tab_gallery)
+        FeedContentFilter.POLLS_ONLY -> Icons.Outlined.HowToVote to stringResource(R.string.tab_polls)
+    }
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            modifier = Modifier.size(22.dp),
+            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (selected) {
+            Spacer(Modifier.height(3.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+    }
+}
+
 
 private fun formatFeedArticleTimestamp(epoch: Long): String {
     val now = System.currentTimeMillis() / 1000

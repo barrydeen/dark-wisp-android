@@ -138,6 +138,80 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val relayFeedIds = HashSet<String>()
     private val _relayFeed = MutableStateFlow<List<NostrEvent>>(emptyList())
     val relayFeed: StateFlow<List<NostrEvent>> = _relayFeed
+ 
+    // Recent replies/comments by followed authors are kept apart from root-note feed items.
+    private val replyFeedList = mutableListOf<NostrEvent>()
+    private val replyFeedIds = HashSet<String>()
+    private val _replyFeed = MutableStateFlow<List<NostrEvent>>(emptyList())
+    val replyFeed: StateFlow<List<NostrEvent>> = _replyFeed
+    @Volatile private var replyFeedAuthors: Set<String> = emptySet()
+
+    fun setReplyFeedAuthors(authors: Set<String>) {
+        replyFeedAuthors = authors
+        val since = System.currentTimeMillis() / 1000 - 7 * 24 * 3600L
+        val cachedReplies = eventCache.values.asSequence()
+            .filter { it.created_at >= since && isReplyFeedEvent(it) }
+            .filter { muteRepo?.isBlocked(it.pubkey) != true }
+            .filter { muteRepo?.isEventMuted(it) != true }
+            .filter { deletedEventsRepo?.isDeleted(it.id) != true }
+            .filter { !isWotFiltered(it.pubkey, it.kind) }
+            .filter {
+                val root = Nip22.getRootScopeId(it) ?: Nip10.getRootId(it) ?: Nip10.getReplyTarget(it) ?: it.id
+                muteRepo?.isThreadMuted(root) != true
+            }
+            .sortedByDescending { it.created_at }
+            .take(500)
+            .toList()
+        synchronized(replyFeedList) {
+            replyFeedList.clear()
+            replyFeedIds.clear()
+            cachedReplies.forEach {
+                replyFeedList.add(it)
+                replyFeedIds.add(it.id)
+            }
+            _replyFeed.value = ArrayList(replyFeedList)
+        }
+    }
+
+    private fun isReplyFeedEvent(event: NostrEvent): Boolean {
+        if (event.pubkey !in replyFeedAuthors) return false
+        return when (event.kind) {
+            1 -> Nip10.isReply(event)
+            Nip22.KIND_COMMENT -> event.tags.any { tag ->
+                tag.size >= 2 && tag[0] in setOf("e", "E", "a", "A")
+            }
+            else -> false
+        }
+    }
+
+    private fun insertReplyFeedEvent(event: NostrEvent) {
+        if (event.created_at > System.currentTimeMillis() / 1000 + 30) return
+        if (!isReplyFeedEvent(event)) return
+        if (muteRepo?.isBlocked(event.pubkey) == true) return
+        if (muteRepo?.isEventMuted(event) == true) return
+        if (deletedEventsRepo?.isDeleted(event.id) == true) return
+        if (isWotFiltered(event.pubkey, event.kind)) return
+        val root = Nip22.getRootScopeId(event) ?: Nip10.getRootId(event) ?: Nip10.getReplyTarget(event) ?: event.id
+        if (muteRepo?.isThreadMuted(root) == true) return
+        synchronized(replyFeedList) {
+            if (!replyFeedIds.add(event.id)) return
+            val index = replyFeedList.indexOfFirst { it.created_at < event.created_at }
+            if (index < 0) replyFeedList.add(event) else replyFeedList.add(index, event)
+            if (replyFeedList.size > 500) {
+                replyFeedIds.remove(replyFeedList.removeAt(replyFeedList.lastIndex).id)
+            }
+            _replyFeed.value = ArrayList(replyFeedList)
+        }
+    }
+
+    private fun clearReplyFeed() {
+        replyFeedAuthors = emptySet()
+        synchronized(replyFeedList) {
+            replyFeedList.clear()
+            replyFeedIds.clear()
+            _replyFeed.value = emptyList()
+        }
+    }
 
     // Author filter: null = show all, non-null = only show events from these pubkeys
     private val _authorFilter = MutableStateFlow<Set<String>?>(null)
@@ -490,7 +564,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (event.kind in intArrayOf(20, 21, 22)) {
             Log.d("GALLERY", "[EventRepo] addEvent kind=${event.kind} id=${event.id.take(12)} pubkey=${event.pubkey.take(8)} alreadySeen=${event.id in seenEventIds}")
         }
-        if (!seenEventIds.add(event.id)) return  // atomic dedup across all relay threads
+        if (!seenEventIds.add(event.id)) {
+            insertReplyFeedEvent(event)
+            return  // atomic dedup across all relay threads
+        }
         if (event.created_at > System.currentTimeMillis() / 1000 + 30) return  // reject future-dated notes (30s grace for clock skew)
         if (muteRepo?.isBlocked(event.pubkey) == true) return
         if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
@@ -522,6 +599,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
         eventPersistence?.persistEvent(event)
         relayHintStore?.extractHintsFromTags(event)
+        insertReplyFeedEvent(event)
 
         when (event.kind) {
             0 -> {
@@ -990,6 +1068,12 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             if (relayFeedIds.remove(eventId)) {
                 relayFeedList.removeAll { it.id == eventId }
                 _relayFeed.value = relayFeedList.toList()
+            }
+        }
+        synchronized(replyFeedList) {
+            if (replyFeedIds.remove(eventId)) {
+                replyFeedList.removeAll { it.id == eventId }
+                _replyFeed.value = replyFeedList.toList()
             }
         }
         feedDirty.trySend(Unit)
@@ -1766,6 +1850,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     fun clearFeed() {
         resetFeedDisplay()
+        clearReplyFeed()
         eventCache.clear()
         seenEventIds.clear()
         privateEventIds.clear()

@@ -82,7 +82,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-enum class FeedType { FOR_YOU, FOLLOWS, EXTENDED_FOLLOWS, RELAY, LIST, TRENDING }
+enum class FeedType { FOR_YOU, FOLLOWS, WITH_REPLIES, EXTENDED_FOLLOWS, RELAY, LIST, TRENDING }
 
 enum class TrendingMode { NOTES, USERS }
 
@@ -411,11 +411,33 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // -- Exposed state --
+    private val combinedFeedSources = combine(
+        feedSub.feedType, eventRepo.feed, eventRepo.replyFeed, eventRepo.relayFeed
+    ) { type, main, replies, relay ->
+        Triple(type, main, Pair(replies, relay))
+    }
+
     val feed: StateFlow<List<NostrEvent>> = combine(
-        feedSub.feedType, eventRepo.feed, eventRepo.relayFeed, accountSwitching
-    ) { type, main, relay, switching ->
+        combinedFeedSources, accountSwitching, feedSub.feedContentFilter
+    ) { sources, switching, contentFilter ->
+        val (type, main, replyAndRelay) = sources
+        val (replies, relay) = replyAndRelay
         if (switching) emptyList()
-        else if (type == FeedType.RELAY || type == FeedType.TRENDING) relay else main
+        else when (type) {
+            FeedType.RELAY, FeedType.TRENDING -> relay
+            FeedType.WITH_REPLIES -> when (contentFilter) {
+                FeedContentFilter.ALL -> replies
+                FeedContentFilter.TEXT_ONLY -> replies.filter {
+                    it.kind == 1 || it.kind == com.darkwisp.app.nostr.Nip22.KIND_COMMENT
+                }
+                FeedContentFilter.GALLERY_ONLY -> replies.filter { it.kind in setOf(20, 21, 22) }
+                FeedContentFilter.POLLS_ONLY -> replies.filter {
+                    it.kind == com.darkwisp.app.nostr.Nip88.KIND_POLL ||
+                        it.kind == com.darkwisp.app.nostr.Nip69.KIND_ZAP_POLL
+                }
+            }
+            else -> main
+        }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val liveNowStreams: StateFlow<List<com.darkwisp.app.repo.LiveStream>> = liveStreamRepo.liveStreams

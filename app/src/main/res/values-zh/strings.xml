@@ -693,4 +693,24 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">添加类型</string>
     <string name="local_relay_invalid_url">无效的本地中继URL</string>
+    <string name="translation_settings_title">帖子翻译</string>
+    <string name="translation_settings_subtitle">选择帖子翻译方式和目标语言。</string>
+    <string name="translation_target_language">目标语言</string>
+    <string name="translation_engine">翻译引擎</string>
+    <string name="translation_engine_mlkit">设备端（ML Kit）</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">DeepL API 密钥</string>
+    <string name="translation_deepl_privacy">所选帖子的文本会发送到 DeepL。链接、Nostr 引用、Lightning 账单和话题标签会受到保护。</string>
+    <string name="translation_deepl_save_key">保存密钥</string>
+    <string name="translation_deepl_test_key">测试密钥</string>
+    <string name="translation_deepl_remove_key">移除密钥</string>
+    <string name="translation_deepl_key_saved">API 密钥已安全保存在此设备上。</string>
+    <string name="translation_deepl_key_removed">API 密钥已移除。</string>
+    <string name="translation_deepl_testing">正在检查 DeepL 访问权限…</string>
+    <string name="translation_deepl_usage">连接已验证 · 已使用 %1$s / %2$s 个字符</string>
+    <string name="translation_deepl_storage_error">此设备无法使用安全存储。</string>
+    <string name="translation_deepl_test_error">无法验证 API 密钥。</string>
+    <string name="translation_deepl_key_missing">如需使用 DeepL，请在界面设置中添加 DeepL API 密钥。</string>
+    <string name="translation_deepl_show_key">显示 API 密钥</string>
+    <string name="translation_deepl_hide_key">隐藏 API 密钥</string>
 </resources>

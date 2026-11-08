@@ -653,4 +653,24 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">Добавить тип</string>
     <string name="local_relay_invalid_url">Недопустимый URL локального реле</string>
+    <string name="translation_settings_title">Перевод публикаций</string>
+    <string name="translation_settings_subtitle">Выберите способ перевода публикаций и целевой язык.</string>
+    <string name="translation_target_language">Целевой язык</string>
+    <string name="translation_engine">Служба перевода</string>
+    <string name="translation_engine_mlkit">На устройстве (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">Ключ API DeepL</string>
+    <string name="translation_deepl_privacy">Текст выбранной публикации отправляется в DeepL. Ссылки, ссылки Nostr, счета Lightning и хэштеги защищены.</string>
+    <string name="translation_deepl_save_key">Сохранить ключ</string>
+    <string name="translation_deepl_test_key">Проверить ключ</string>
+    <string name="translation_deepl_remove_key">Удалить ключ</string>
+    <string name="translation_deepl_key_saved">Ключ API надёжно сохранён на этом устройстве.</string>
+    <string name="translation_deepl_key_removed">Ключ API удалён.</string>
+    <string name="translation_deepl_testing">Проверка доступа к DeepL…</string>
+    <string name="translation_deepl_usage">Подключение проверено · использовано %1$s из %2$s символов</string>
+    <string name="translation_deepl_storage_error">Защищённое хранилище недоступно на этом устройстве.</string>
+    <string name="translation_deepl_test_error">Не удалось проверить ключ API.</string>
+    <string name="translation_deepl_key_missing">Чтобы использовать DeepL, добавьте ключ API DeepL в настройках интерфейса.</string>
+    <string name="translation_deepl_show_key">Показать ключ API</string>
+    <string name="translation_deepl_hide_key">Скрыть ключ API</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.darkwisp.app.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +69,7 @@ fun TranslationSettingsSection(interfacePrefs: InterfacePreferences) {
     var feedback by remember { mutableStateOf<String?>(null) }
     var feedbackIsError by remember { mutableStateOf(false) }
     var isChecking by remember { mutableStateOf(false) }
+    var sectionExpanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -77,19 +79,37 @@ fun TranslationSettingsSection(interfacePrefs: InterfacePreferences) {
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = stringResource(R.string.translation_settings_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.translation_settings_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { sectionExpanded = !sectionExpanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.translation_settings_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.translation_settings_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = if (sectionExpanded) "▲" else "▼",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
-            Spacer(Modifier.height(16.dp))
+            AnimatedVisibility(visible = sectionExpanded) {
+                Column {
+                    Spacer(Modifier.height(16.dp))
             Text(
                 text = stringResource(R.string.translation_target_language),
                 style = MaterialTheme.typography.titleSmall
@@ -294,7 +314,9 @@ fun TranslationSettingsSection(interfacePrefs: InterfacePreferences) {
                         )
                     }
                 }
+                }
             }
         }
     }
+}
 }

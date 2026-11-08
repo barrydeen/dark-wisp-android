@@ -693,4 +693,24 @@
     <string name="local_relay_kind_zaps">Zaps (9735)</string>
     <string name="local_relay_add_kind">Typ hinzufügen</string>
     <string name="local_relay_invalid_url">Ungültige lokale Relay-URL</string>
+    <string name="translation_settings_title">Beitragsübersetzung</string>
+    <string name="translation_settings_subtitle">Lege fest, wie Beiträge übersetzt werden und in welche Sprache.</string>
+    <string name="translation_target_language">Zielsprache</string>
+    <string name="translation_engine">Übersetzungsdienst</string>
+    <string name="translation_engine_mlkit">Auf dem Gerät (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">DeepL-API-Schlüssel</string>
+    <string name="translation_deepl_privacy">Der Text des ausgewählten Beitrags wird an DeepL gesendet. Links, Nostr-Verweise, Lightning-Rechnungen und Hashtags bleiben geschützt.</string>
+    <string name="translation_deepl_save_key">Schlüssel speichern</string>
+    <string name="translation_deepl_test_key">Schlüssel testen</string>
+    <string name="translation_deepl_remove_key">Schlüssel entfernen</string>
+    <string name="translation_deepl_key_saved">API-Schlüssel wurde sicher auf diesem Gerät gespeichert.</string>
+    <string name="translation_deepl_key_removed">API-Schlüssel entfernt.</string>
+    <string name="translation_deepl_testing">DeepL-Zugriff wird überprüft…</string>
+    <string name="translation_deepl_usage">Verbindung bestätigt · %1$s / %2$s Zeichen verwendet</string>
+    <string name="translation_deepl_storage_error">Der sichere Speicher ist auf diesem Gerät nicht verfügbar.</string>
+    <string name="translation_deepl_test_error">API-Schlüssel konnte nicht überprüft werden.</string>
+    <string name="translation_deepl_key_missing">Füge in den Interface-Einstellungen einen DeepL-API-Schlüssel hinzu, um DeepL zu verwenden.</string>
+    <string name="translation_deepl_show_key">API-Schlüssel anzeigen</string>
+    <string name="translation_deepl_hide_key">API-Schlüssel ausblenden</string>
 </resources>

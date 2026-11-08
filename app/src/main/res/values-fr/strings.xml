@@ -693,4 +693,24 @@
     <string name="local_relay_kind_zaps">Zaps (9735)</string>
     <string name="local_relay_add_kind">Ajouter un type</string>
     <string name="local_relay_invalid_url">URL de relais local invalide</string>
+    <string name="translation_settings_title">Traduction des publications</string>
+    <string name="translation_settings_subtitle">Choisissez la manière de traduire les publications et la langue cible.</string>
+    <string name="translation_target_language">Langue cible</string>
+    <string name="translation_engine">Moteur de traduction</string>
+    <string name="translation_engine_mlkit">Sur l’appareil (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">Clé API DeepL</string>
+    <string name="translation_deepl_privacy">Le texte de la publication sélectionnée est envoyé à DeepL. Les liens, références Nostr, factures Lightning et hashtags sont protégés.</string>
+    <string name="translation_deepl_save_key">Enregistrer la clé</string>
+    <string name="translation_deepl_test_key">Tester la clé</string>
+    <string name="translation_deepl_remove_key">Supprimer la clé</string>
+    <string name="translation_deepl_key_saved">La clé API a été enregistrée en toute sécurité sur cet appareil.</string>
+    <string name="translation_deepl_key_removed">Clé API supprimée.</string>
+    <string name="translation_deepl_testing">Vérification de l’accès à DeepL…</string>
+    <string name="translation_deepl_usage">Connexion vérifiée · %1$s / %2$s caractères utilisés</string>
+    <string name="translation_deepl_storage_error">Le stockage sécurisé n’est pas disponible sur cet appareil.</string>
+    <string name="translation_deepl_test_error">Impossible de vérifier la clé API.</string>
+    <string name="translation_deepl_key_missing">Pour utiliser DeepL, ajoutez une clé API DeepL dans les paramètres de l’interface.</string>
+    <string name="translation_deepl_show_key">Afficher la clé API</string>
+    <string name="translation_deepl_hide_key">Masquer la clé API</string>
 </resources>

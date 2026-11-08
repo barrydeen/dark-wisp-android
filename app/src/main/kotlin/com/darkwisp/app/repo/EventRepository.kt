@@ -495,7 +495,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (event.kind in intArrayOf(20, 21, 22)) {
             Log.d("GALLERY", "[EventRepo] addEvent kind=${event.kind} id=${event.id.take(12)} pubkey=${event.pubkey.take(8)} alreadySeen=${event.id in seenEventIds}")
         }
-        if (!seenEventIds.add(event.id)) return  // atomic dedup across all relay threads
+        if (!seenEventIds.add(event.id)) {
+            // A kind-6 repost may have entered seenEventIds through cacheEvent() or
+            // another profile path before reaching this pipeline. Reconcile its
+            // metadata even when the event itself is already deduplicated.
+            if (event.kind == 6) recordRepostIfEligible(event)
+            return  // atomic dedup across all relay threads
+        }
         if (event.created_at > System.currentTimeMillis() / 1000 + 30) return  // reject future-dated notes (30s grace for clock skew)
         if (muteRepo?.isBlocked(event.pubkey) == true) return
         if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
@@ -554,14 +560,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 binaryInsert(event, fromFeed = true)
             }
             6 -> {
-                // Repost: parse embedded event from content and insert it into the feed
+                // Repost: reconcile metadata, then insert its embedded event into the feed.
+                val inner = recordRepostIfEligible(event) ?: return
                 if (event.content.isNotBlank()) {
                     try {
-                        val inner = fromJson(event.content)
-                        if (muteRepo?.isBlocked(inner.pubkey) == true) return
-                        if (muteRepo?.isEventMuted(inner) == true) return
-                        if (isWotFiltered(event.pubkey, 6) && isWotFiltered(inner.pubkey, 1)) return
-                        recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
                         // Reposts from followed authors (including our own account) should
                         // surface the embedded note in the Follows feed. The note may already
@@ -953,6 +955,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun cacheEvent(event: NostrEvent) {
+        // Profile and cache-only fetches can see repost wrappers before addEvent().
+        // Record their author/target relationship here as well; registration is
+        // idempotent because repostEvents is keyed by the wrapper event ID.
+        if (event.kind == 6) recordRepostIfEligible(event)
         if (eventCache.containsKey(event.id)) return
         seenEventIds.add(event.id)
         eventCache[event.id] = event
@@ -1341,6 +1347,30 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             }
         }
         return result
+    }
+
+    /**
+     * Parse and register a visible kind-6 repost independently from feed insertion.
+     * This must also run for events already present in seenEventIds: cacheEvent() can
+     * mark a wrapper as seen before its author/target relationship reaches addEvent().
+     * Registration is idempotent, so repeated relay copies never inflate counts.
+     */
+    private fun recordRepostIfEligible(repostEvent: NostrEvent): NostrEvent? {
+        if (repostEvent.kind != 6 || repostEvent.content.isBlank()) return null
+        if (repostEvent.created_at > System.currentTimeMillis() / 1000 + 30) return null
+        if (deletedEventsRepo?.isDeleted(repostEvent.id) == true) return null
+        if (muteRepo?.isBlocked(repostEvent.pubkey) == true) return null
+
+        return try {
+            val inner = fromJson(repostEvent.content)
+            if (muteRepo?.isBlocked(inner.pubkey) == true) return null
+            if (muteRepo?.isEventMuted(inner) == true) return null
+            if (isWotFiltered(repostEvent.pubkey, 6) && isWotFiltered(inner.pubkey, 1)) return null
+            recordRepost(repostEvent, inner)
+            inner
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun recordRepost(repostEvent: NostrEvent, inner: NostrEvent) {

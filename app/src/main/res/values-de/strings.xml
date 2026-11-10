@@ -694,9 +694,10 @@
     <string name="local_relay_add_kind">Typ hinzufügen</string>
     <string name="local_relay_invalid_url">Ungültige lokale Relay-URL</string>
     <string name="tab_for_you">Für dich</string>
-    <string name="tab_with_reply">Mit Antworten</string>
+    <string name="tab_conversations">Unterhaltungen</string>
     <string name="tab_more">Mehr</string>
     <string name="tab_text">Text</string>
     <string name="tab_gallery">Galerie</string>
     <string name="tab_polls">Umfragen</string>
+    <string name="feed_conversations_end">Du hast das Ende der aktuellen Unterhaltungen erreicht.</string>
 </resources>

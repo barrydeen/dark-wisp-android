@@ -693,9 +693,10 @@
     <string name="local_relay_add_kind">Aggiungi tipo</string>
     <string name="local_relay_invalid_url">URL relay locale non valido</string>
     <string name="tab_for_you">Per te</string>
-    <string name="tab_with_reply">Con risposte</string>
+    <string name="tab_conversations">Conversazioni</string>
     <string name="tab_more">Altro</string>
     <string name="tab_text">Testo</string>
     <string name="tab_gallery">Galleria</string>
     <string name="tab_polls">Sondaggi</string>
+    <string name="feed_conversations_end">Hai raggiunto la fine delle conversazioni recenti.</string>
 </resources>

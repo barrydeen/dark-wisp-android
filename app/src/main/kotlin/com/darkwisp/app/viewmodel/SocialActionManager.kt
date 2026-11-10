@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Handles user-initiated social actions: follow/block, reactions, reposts, zaps, pins, mutes.
@@ -74,6 +75,9 @@ class SocialActionManager(
 
     private val _zapError = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val zapError: SharedFlow<String> = _zapError
+
+    // Prevent rapid repeated taps from publishing multiple kind-6 events for one note.
+    private val repostActionsInProgress = ConcurrentHashMap.newKeySet<String>()
 
     private val _reactionSent = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     val reactionSent: SharedFlow<Unit> = _reactionSent
@@ -220,21 +224,52 @@ class SocialActionManager(
         }
     }
 
+    /**
+     * Toggle a public repost. The same action becomes "Undo repost" when the user
+     * has already reposted the note: publish one NIP-09 deletion covering all of
+     * the user's known kind-6 repost events for this target.
+     */
     fun sendRepost(event: NostrEvent) {
         val s = getSigner() ?: return
+        if (!repostActionsInProgress.add(event.id)) return
         scope.launch {
             try {
-                val hint = outboxRouter.getRelayHint(event.pubkey)
-                val tags = Nip18.buildRepostTags(event, hint).toMutableList()
-                if (interfacePrefs.isClientTagEnabled()) {
-                    tags.add(listOf("client", "Dark Wisp"))
+                val wasAlreadyMarked = eventRepo.hasUserReposted(event.id)
+                val knownRepostIds = eventRepo.getUserRepostEventIds(event.id)
+                if (wasAlreadyMarked) {
+                    if (knownRepostIds.isEmpty()) return@launch
+
+                    val deletionTags = knownRepostIds.map { listOf("e", it) }.toMutableList()
+                    deletionTags.add(listOf("k", "6"))
+                    val deletionEvent = s.signEvent(kind = 5, content = "", tags = deletionTags)
+                    relayPool.sendToWriteRelays(ClientMessage.event(deletionEvent))
+
+                    // Optimistic local update; later relay copies of the kind-5
+                    // event are idempotent and will reconcile the same records.
+                    knownRepostIds.forEach { deletedEventsRepo.markDeleted(it) }
+                    eventRepo.removeUserRepost(event.id)
+                } else if (knownRepostIds.isNotEmpty()) {
+                    // A pre-existing repost was found in local persistence. Do not
+                    // publish another one: recordRepost() has already updated the
+                    // selected state, so the next action will offer Undo repost.
+                    return@launch
+                } else {
+                    val hint = outboxRouter.getRelayHint(event.pubkey)
+                    val tags = Nip18.buildRepostTags(event, hint).toMutableList()
+                    if (interfacePrefs.isClientTagEnabled()) {
+                        tags.add(listOf("client", "Dark Wisp"))
+                    }
+                    val repostEvent = s.signEvent(kind = 6, content = event.toJson(), tags = tags)
+                    val msg = ClientMessage.event(repostEvent)
+                    outboxRouter.publishToInbox(msg, event.pubkey)
+                    // addEvent records the signed repost event ID as well as the
+                    // target/author relationship used by Undo and exact counts.
+                    eventRepo.addEvent(repostEvent)
                 }
-                val repostEvent = s.signEvent(kind = 6, content = event.toJson(), tags = tags)
-                val msg = ClientMessage.event(repostEvent)
-                outboxRouter.publishToInbox(msg, event.pubkey)
-                eventRepo.markUserRepost(event.id)
-                eventRepo.addEvent(repostEvent)
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                repostActionsInProgress.remove(event.id)
+            }
         }
     }
 

@@ -15,6 +15,7 @@ import com.darkwisp.app.nostr.NostrEvent.Companion.fromJson
 import com.darkwisp.app.nostr.ProfileData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -145,40 +146,82 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val _replyFeed = MutableStateFlow<List<NostrEvent>>(emptyList())
     val replyFeed: StateFlow<List<NostrEvent>> = _replyFeed
     @Volatile private var replyFeedAuthors: Set<String> = emptySet()
+    private var replyFeedAuthorsJob: Job? = null
 
     fun setReplyFeedAuthors(authors: Set<String>) {
-        replyFeedAuthors = authors
-        val since = System.currentTimeMillis() / 1000 - 7 * 24 * 3600L
-        val cachedReplies = eventCache.values.asSequence()
-            .filter { it.created_at >= since && isReplyFeedEvent(it) }
-            .filter { muteRepo?.isBlocked(it.pubkey) != true }
-            .filter { muteRepo?.isEventMuted(it) != true }
-            .filter { deletedEventsRepo?.isDeleted(it.id) != true }
-            .filter { !isWotFiltered(it.pubkey, it.kind) }
-            .filter {
-                val root = Nip22.getRootScopeId(it) ?: Nip10.getRootId(it) ?: Nip10.getReplyTarget(it) ?: it.id
-                muteRepo?.isThreadMuted(root) != true
+        val normalizedAuthors = authors.toSet()
+        // setFeedType() and resubscribeFeed() both call this method. Avoid
+        // rescanning the full cache when the followed-author set has not changed.
+        if (replyFeedAuthors == normalizedAuthors) return
+        replyFeedAuthors = normalizedAuthors
+        replyFeedAuthorsJob?.cancel()
+
+        if (normalizedAuthors.isEmpty()) {
+            synchronized(replyFeedList) {
+                replyFeedList.clear()
+                replyFeedIds.clear()
+                _replyFeed.value = emptyList()
             }
-            .sortedByDescending { it.created_at }
-            .take(500)
-            .toList()
-        synchronized(replyFeedList) {
-            replyFeedList.clear()
-            replyFeedIds.clear()
-            cachedReplies.forEach {
-                replyFeedList.add(it)
-                replyFeedIds.add(it.id)
+            return
+        }
+
+        // eventCache can contain thousands of entries; keep the scan and tag parsing
+        // off the main thread. Concurrent arrivals are merged back before publishing.
+        replyFeedAuthorsJob = scope.launch(Dispatchers.Default) {
+            val since = System.currentTimeMillis() / 1000 - 7 * 24 * 3600L
+            val cachedReplies = eventCache.values.asSequence()
+                .filter { it.created_at >= since && isReplyFeedEvent(it, normalizedAuthors) }
+                .filter { muteRepo?.isBlocked(it.pubkey) != true }
+                .filter { muteRepo?.isEventMuted(it) != true }
+                .filter { deletedEventsRepo?.isDeleted(it.id) != true }
+                .filter { !isWotFiltered(it.pubkey, it.kind) }
+                .filter {
+                    val root = Nip22.getRootScopeId(it) ?: Nip10.getRootId(it) ?: Nip10.getReplyTarget(it) ?: it.id
+                    muteRepo?.isThreadMuted(root) != true
+                }
+                .toList()
+
+            synchronized(replyFeedList) {
+                if (replyFeedAuthors != normalizedAuthors) return@synchronized
+                val liveReplies = replyFeedList.filter { it.pubkey in normalizedAuthors }
+                val mergedReplies = (cachedReplies + liveReplies)
+                    .distinctBy { it.id }
+                    .sortedByDescending { it.created_at }
+                    .take(500)
+                replyFeedList.clear()
+                replyFeedIds.clear()
+                mergedReplies.forEach {
+                    replyFeedList.add(it)
+                    replyFeedIds.add(it.id)
+                }
+                _replyFeed.value = ArrayList(replyFeedList)
             }
-            _replyFeed.value = ArrayList(replyFeedList)
         }
     }
 
-    private fun isReplyFeedEvent(event: NostrEvent): Boolean {
-        if (event.pubkey !in replyFeedAuthors) return false
+    private fun isReplyFeedEvent(
+        event: NostrEvent,
+        authors: Set<String> = replyFeedAuthors
+    ): Boolean {
+        if (event.pubkey !in authors) return false
         return when (event.kind) {
             1 -> Nip10.isReply(event)
-            Nip22.KIND_COMMENT -> event.tags.any { tag ->
-                tag.size >= 2 && tag[0] in setOf("e", "E", "a", "A")
+            Nip22.KIND_COMMENT -> {
+                val tags = event.tags
+                val hasRootScope = tags.any {
+                    it.size >= 2 && it[0] in setOf("E", "A", "I") && it[1].isNotBlank()
+                }
+                val hasRootKind = tags.any {
+                    it.size >= 2 && it[0] == "K" && it[1].isNotBlank()
+                }
+                val hasParentScope = tags.any {
+                    it.size >= 2 && it[0] in setOf("e", "a", "i") && it[1].isNotBlank()
+                }
+                val hasParentKind = tags.any {
+                    it.size >= 2 && it[0] == "k" && it[1].isNotBlank()
+                }
+                // NIP-22 requires both root (E/A/I + K) and parent (e/a/i + k) scopes.
+                hasRootScope && hasRootKind && hasParentScope && hasParentKind
             }
             else -> false
         }
@@ -206,6 +249,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     private fun clearReplyFeed() {
         replyFeedAuthors = emptySet()
+        replyFeedAuthorsJob?.cancel()
+        replyFeedAuthorsJob = null
         synchronized(replyFeedList) {
             replyFeedList.clear()
             replyFeedIds.clear()

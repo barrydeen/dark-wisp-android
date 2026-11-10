@@ -958,5 +958,5 @@
     <string name="tab_text">Text</string>
     <string name="tab_gallery">Gallery</string>
     <string name="tab_polls">Polls</string>
-    <string name="feed_conversations_end">You've reached the end of recent conversations.</string>
+    <string name="feed_conversations_end">You have reached the end of recent conversations.</string>
 </resources>

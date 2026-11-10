@@ -353,7 +353,7 @@
     <string name="social_computing_network">正在计算网络...</string>
     <string name="social_filtering">正在筛选...</string>
     <string name="social_fetching_relays">正在获取中继列表...</string>
-    <string name="social_warning">这可能需要2\u20155分钟。请停留在此屏幕直至完成。</string>
+    <string name="social_warning">这可能需要2–5分钟。请停留在此屏幕直至完成。</string>
     <string name="social_top_accounts">热门账户</string>
     <string name="social_qualified_from">%2$d关注中有%1$d个合格</string>
     <string name="social_recompute">重新计算</string>
@@ -693,4 +693,11 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">添加类型</string>
     <string name="local_relay_invalid_url">无效的本地中继URL</string>
+    <string name="tab_for_you">为你</string>
+    <string name="tab_conversations">对话</string>
+    <string name="tab_more">更多</string>
+    <string name="tab_text">文字</string>
+    <string name="tab_gallery">图库</string>
+    <string name="tab_polls">投票</string>
+    <string name="feed_conversations_end">已显示全部近期对话。</string>
 </resources>

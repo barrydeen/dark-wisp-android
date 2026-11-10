@@ -396,7 +396,7 @@
     <string name="social_computing_network">Computing network...</string>
     <string name="social_filtering">Filtering...</string>
     <string name="social_fetching_relays">Fetching relay lists...</string>
-    <string name="social_warning">This may take 2\u20135 minutes. Please stay on this screen until it finishes.</string>
+    <string name="social_warning">This may take 2–5 minutes. Please stay on this screen until it finishes.</string>
     <string name="social_top_accounts">Top Accounts</string>
     <string name="social_qualified_from">%1$d qualified from %2$d follows</string>
     <string name="social_recompute">Recompute</string>
@@ -953,4 +953,10 @@
     <string name="alt_editor_chars_remaining">%1$d remaining</string>
     <string name="alt_editor_clear">Clear description</string>
 
+    <string name="tab_conversations">Conversations</string>
+    <string name="tab_more">More</string>
+    <string name="tab_text">Text</string>
+    <string name="tab_gallery">Gallery</string>
+    <string name="tab_polls">Polls</string>
+    <string name="feed_conversations_end">You have reached the end of recent conversations.</string>
 </resources>

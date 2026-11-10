@@ -336,7 +336,7 @@
     <string name="social_computing_network">Вычисление сети...</string>
     <string name="social_filtering">Фильтрация...</string>
     <string name="social_fetching_relays">Получение списков релеев...</string>
-    <string name="social_warning">Это может занять 2\u20135 минут. Пожалуйста, оставайтесь на этом экране до завершения.</string>
+    <string name="social_warning">Это может занять 2–5 минут. Пожалуйста, оставайтесь на этом экране до завершения.</string>
     <string name="social_top_accounts">Топ Аккаунты</string>
     <string name="social_qualified_from">%1$d квалифицировано из %2$d подписок</string>
     <string name="social_recompute">Пересчитать</string>
@@ -653,4 +653,11 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">Добавить тип</string>
     <string name="local_relay_invalid_url">Недопустимый URL локального реле</string>
+    <string name="tab_for_you">Для вас</string>
+    <string name="tab_conversations">Диалоги</string>
+    <string name="tab_more">Ещё</string>
+    <string name="tab_text">Текст</string>
+    <string name="tab_gallery">Галерея</string>
+    <string name="tab_polls">Опросы</string>
+    <string name="feed_conversations_end">Вы дошли до конца недавних обсуждений.</string>
 </resources>

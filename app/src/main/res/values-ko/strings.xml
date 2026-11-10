@@ -353,7 +353,7 @@
     <string name="social_computing_network">네트워크 계산 중...</string>
     <string name="social_filtering">필터링 중...</string>
     <string name="social_fetching_relays">릴레이 목록 가져오는 중...</string>
-    <string name="social_warning">2\u20135분이 걸릴 수 있습니다. 완료될 때까지 이 화면을 유지하세요.</string>
+    <string name="social_warning">2–5분이 걸릴 수 있습니다. 완료될 때까지 이 화면을 유지하세요.</string>
     <string name="social_top_accounts">상위 계정</string>
     <string name="social_qualified_from">%2$d명의 팔로우 중 %1$d명 적합</string>
     <string name="social_recompute">재계산</string>
@@ -693,4 +693,11 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">종류 추가</string>
     <string name="local_relay_invalid_url">잘못된 로컬 릴레이 URL</string>
+    <string name="tab_for_you">추천</string>
+    <string name="tab_conversations">대화</string>
+    <string name="tab_more">더보기</string>
+    <string name="tab_text">텍스트</string>
+    <string name="tab_gallery">갤러리</string>
+    <string name="tab_polls">설문</string>
+    <string name="feed_conversations_end">최근 대화를 모두 확인했습니다.</string>
 </resources>

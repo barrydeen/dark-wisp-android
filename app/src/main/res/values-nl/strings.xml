@@ -353,7 +353,7 @@
     <string name="social_computing_network">Netwerk berekenen...</string>
     <string name="social_filtering">Filteren...</string>
     <string name="social_fetching_relays">Ophalen van relay-lijsten...</string>
-    <string name="social_warning">Dit kan 2\u20135 minuten duren. Blijf op dit scherm tot het klaar is.</string>
+    <string name="social_warning">Dit kan 2–5 minuten duren. Blijf op dit scherm tot het klaar is.</string>
     <string name="social_top_accounts">Top Accounts</string>
     <string name="social_qualified_from">%1$d gekwalificeerd van %2$d follows</string>
     <string name="social_recompute">Opnieuw Berekenen</string>

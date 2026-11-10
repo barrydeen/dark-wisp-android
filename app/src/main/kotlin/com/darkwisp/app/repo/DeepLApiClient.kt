@@ -57,7 +57,10 @@ class DeepLApiClient(
         // Translate prose line by line. Newlines are presentation structure in
         // Nostr notes: a standalone image URL must not become an inline URL,
         // or RichContent may render it with a different layout.
-        val document = TranslationTextProtector.protectDocument(sourceText)
+        val document = TranslationTextProtector.protectDocument(
+            sourceText,
+            preserveCustomEmojiShortcodes = true
+        )
         val translatedTexts = mutableListOf<String>()
         var detectedSourceLanguage: String? = null
 

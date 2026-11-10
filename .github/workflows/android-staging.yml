@@ -1,9 +1,6 @@
 name: Android staging build
 
 on:
-  push:
-    branches:
-      - feature/deepl-translation
   workflow_dispatch:
 
 permissions:

@@ -425,17 +425,9 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         if (switching) emptyList()
         else when (type) {
             FeedType.RELAY, FeedType.TRENDING -> relay
-            FeedType.WITH_REPLIES -> when (contentFilter) {
-                FeedContentFilter.ALL -> replies
-                FeedContentFilter.TEXT_ONLY -> replies.filter {
-                    it.kind == 1 || it.kind == com.darkwisp.app.nostr.Nip22.KIND_COMMENT
-                }
-                FeedContentFilter.GALLERY_ONLY -> replies.filter { it.kind in setOf(20, 21, 22) }
-                FeedContentFilter.POLLS_ONLY -> replies.filter {
-                    it.kind == com.darkwisp.app.nostr.Nip88.KIND_POLL ||
-                        it.kind == com.darkwisp.app.nostr.Nip69.KIND_ZAP_POLL
-                }
-            }
+            // Conversations are replies and comments only; the content-filter row
+            // is hidden in this mode, so do not expose unrelated gallery/poll filters.
+            FeedType.WITH_REPLIES -> replies
             else -> main
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

@@ -693,9 +693,10 @@
     <string name="local_relay_add_kind">Type toevoegen</string>
     <string name="local_relay_invalid_url">Ongeldige lokale relay-URL</string>
     <string name="tab_for_you">Voor jou</string>
-    <string name="tab_with_reply">Met antwoorden</string>
+    <string name="tab_conversations">Gesprekken</string>
     <string name="tab_more">Meer</string>
     <string name="tab_text">Tekst</string>
     <string name="tab_gallery">Galerij</string>
     <string name="tab_polls">Peilingen</string>
+    <string name="feed_conversations_end">Je hebt het einde van de recente gesprekken bereikt.</string>
 </resources>

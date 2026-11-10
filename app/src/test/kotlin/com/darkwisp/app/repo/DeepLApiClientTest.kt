@@ -33,6 +33,18 @@ class DeepLApiClientTest {
     }
 
     @Test
+    fun deepLDocumentTranslationPreservesCustomEmojiShortcodes() {
+        val original = "A note with :paintbrush: and :island_art: plus https://example.com/image.jpg"
+        val document = TranslationTextProtector.protectDocument(
+            original,
+            preserveCustomEmojiShortcodes = true
+        )
+
+        assertEquals(1, document.texts.size)
+        assertEquals(original, document.restore(document.texts))
+    }
+
+    @Test
     fun missingProtectedMarkerFailsRatherThanCorruptingAReference() {
         val protected = TranslationTextProtector.protect("Visit https://example.com")
         assertThrows(java.io.IOException::class.java) {

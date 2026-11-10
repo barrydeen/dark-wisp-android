@@ -607,8 +607,18 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                     val target = eventCache[id]
                     val repostTarget = repostTargetsByEventId.get(id)
                     val repostRecord = repostTarget?.let { repostEvents.get(it)?.get(id) }
-                    val authorMatches = repostRecord == null || repostRecord.author == event.pubkey
-                    if ((target == null || target.pubkey == event.pubkey) && authorMatches) {
+                    // NIP-09 deletions are only authoritative when we know the
+                    // referenced event/repost and can verify its author. Never create a
+                    // tombstone for an unknown ID: a third party could otherwise suppress
+                    // an event before it arrives from a relay.
+                    val authorMatches = when {
+                        target != null && repostRecord != null ->
+                            target.pubkey == event.pubkey && repostRecord.author == event.pubkey
+                        target != null -> target.pubkey == event.pubkey
+                        repostRecord != null -> repostRecord.author == event.pubkey
+                        else -> false
+                    }
+                    if (authorMatches) {
                         deletedEventsRepo?.markDeleted(id)
                         if (repostRecord != null) removeRepostEvent(id, event.pubkey)
                         removeEvent(id)

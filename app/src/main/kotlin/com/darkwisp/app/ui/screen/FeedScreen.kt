@@ -893,19 +893,25 @@ fun FeedScreen(
                         ) {
                             ProfilePicture(url = userProfile?.picture, size = 32)
                         }
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(0.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FeedContentFilterIconTab(FeedContentFilter.ALL, contentFilter == FeedContentFilter.ALL,
-                                { viewModel.setFeedContentFilter(FeedContentFilter.ALL) }, Modifier.weight(1f))
-                            FeedContentFilterIconTab(FeedContentFilter.TEXT_ONLY, contentFilter == FeedContentFilter.TEXT_ONLY,
-                                { viewModel.setFeedContentFilter(FeedContentFilter.TEXT_ONLY) }, Modifier.weight(1f))
-                            FeedContentFilterIconTab(FeedContentFilter.GALLERY_ONLY, contentFilter == FeedContentFilter.GALLERY_ONLY,
-                                { viewModel.setFeedContentFilter(FeedContentFilter.GALLERY_ONLY) }, Modifier.weight(1f))
-                            FeedContentFilterIconTab(FeedContentFilter.POLLS_ONLY, contentFilter == FeedContentFilter.POLLS_ONLY,
-                                { viewModel.setFeedContentFilter(FeedContentFilter.POLLS_ONLY) }, Modifier.weight(1f))
+                        if (feedType == FeedType.WITH_REPLIES) {
+                            // Conversations are already limited to replies/comments, so
+                            // unrelated gallery and poll filters are intentionally hidden.
+                            Spacer(Modifier.weight(1f))
+                        } else {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FeedContentFilterIconTab(FeedContentFilter.ALL, contentFilter == FeedContentFilter.ALL,
+                                    { viewModel.setFeedContentFilter(FeedContentFilter.ALL) }, Modifier.weight(1f))
+                                FeedContentFilterIconTab(FeedContentFilter.TEXT_ONLY, contentFilter == FeedContentFilter.TEXT_ONLY,
+                                    { viewModel.setFeedContentFilter(FeedContentFilter.TEXT_ONLY) }, Modifier.weight(1f))
+                                FeedContentFilterIconTab(FeedContentFilter.GALLERY_ONLY, contentFilter == FeedContentFilter.GALLERY_ONLY,
+                                    { viewModel.setFeedContentFilter(FeedContentFilter.GALLERY_ONLY) }, Modifier.weight(1f))
+                                FeedContentFilterIconTab(FeedContentFilter.POLLS_ONLY, contentFilter == FeedContentFilter.POLLS_ONLY,
+                                    { viewModel.setFeedContentFilter(FeedContentFilter.POLLS_ONLY) }, Modifier.weight(1f))
+                            }
                         }
                         if (onlinePubkeys.isNotEmpty()) {
                             Surface(
@@ -975,7 +981,7 @@ fun FeedScreen(
                             { viewModel.setFeedType(FeedType.FOR_YOU) }, modifier = Modifier.weight(1f), equalWidth = true)
                         FeedModeTab(stringResource(R.string.tab_following), feedType == FeedType.FOLLOWS,
                             { viewModel.setFeedType(FeedType.FOLLOWS) }, modifier = Modifier.weight(1f), equalWidth = true)
-                        FeedModeTab(stringResource(R.string.tab_with_reply), feedType == FeedType.WITH_REPLIES,
+                        FeedModeTab(stringResource(R.string.tab_conversations), feedType == FeedType.WITH_REPLIES,
                             { viewModel.setFeedType(FeedType.WITH_REPLIES) }, modifier = Modifier.weight(1f), equalWidth = true)
                         Box(modifier = Modifier.weight(1f)) {
                             FeedModeTab(
@@ -1284,7 +1290,21 @@ fun FeedScreen(
                                 )
                                 }
                             }
-                            if (initialLoadDone) {
+                            if (feedType == FeedType.WITH_REPLIES) {
+                                if (feed.isNotEmpty()) {
+                                    item(key = "conversations-end", contentType = "feed-footer") {
+                                        Text(
+                                            text = stringResource(R.string.feed_conversations_end),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 18.dp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            } else if (initialLoadDone) {
                                 item(key = "load-more", contentType = "loader") {
                                     Box(
                                         modifier = Modifier
@@ -3384,12 +3404,14 @@ private fun FeedModeTab(
         fontSize = 15.sp,
         fontWeight = fontWeight
     )
-    val measuredTextWidth = textMeasurer.measure(
-        text = label,
-        style = baseTextStyle,
-        softWrap = false,
-        maxLines = 1
-    ).size.width
+    val measuredTextWidth = remember(label, baseTextStyle) {
+        textMeasurer.measure(
+            text = label,
+            style = baseTextStyle,
+            softWrap = false,
+            maxLines = 1
+        ).size.width
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -3397,9 +3419,9 @@ private fun FeedModeTab(
             .clickable(onClick = onClick)
             .padding(horizontal = if (equalWidth) 2.dp else 7.dp)
     ) {
-        val availableTextWidthPx = (
-            (maxWidth.value - if (showChevron) 18f else 0f) * density.density
-        ).toInt().coerceAtLeast(1)
+        val availableTextWidthPx = with(density) {
+            (maxWidth - if (showChevron) 18.dp else 0.dp).roundToPx()
+        }.coerceAtLeast(1)
         val fitScale = (availableTextWidthPx.toFloat() / measuredTextWidth.coerceAtLeast(1))
             .coerceAtMost(1f)
         val fittedFontSize = (15f * fitScale).coerceAtLeast(10f).sp

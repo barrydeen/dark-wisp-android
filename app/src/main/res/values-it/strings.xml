@@ -115,6 +115,7 @@
     <string name="btn_unpin_from_profile">Rimuovi dal Profilo</string>
     <string name="btn_share">Condividi</string>
     <string name="btn_copy_note_id">Copia ID Nota</string>
+    <string name="btn_copy_note_text">Copia testo della nota</string>
     <string name="btn_copy_note_json">Copia JSON Nota</string>
     <string name="btn_hide">Nascondi</string>
     <string name="btn_retweet">Condividi</string>
@@ -692,4 +693,27 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">Aggiungi tipo</string>
     <string name="local_relay_invalid_url">URL relay locale non valido</string>
+
+    <!-- Traduzione dei post -->
+    <string name="translation_settings_title">Traduzione dei post</string>
+    <string name="translation_settings_subtitle">Scegli il motore di traduzione e la lingua in cui tradurre i post.</string>
+    <string name="translation_target_language">Lingua di traduzione</string>
+    <string name="translation_engine">Motore di traduzione</string>
+    <string name="translation_engine_mlkit">Sul dispositivo (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">Chiave API DeepL</string>
+    <string name="translation_deepl_privacy">Il testo del post scelto viene inviato a DeepL. Link, riferimenti Nostr, invoice Lightning e hashtag vengono protetti.</string>
+    <string name="translation_deepl_save_key">Salva chiave</string>
+    <string name="translation_deepl_test_key">Verifica chiave</string>
+    <string name="translation_deepl_remove_key">Rimuovi chiave</string>
+    <string name="translation_deepl_key_saved">Chiave API salvata in modo sicuro su questo dispositivo.</string>
+    <string name="translation_deepl_key_removed">Chiave API rimossa.</string>
+    <string name="translation_deepl_testing">Verifica dell’accesso a DeepL…</string>
+    <string name="translation_deepl_usage">Connessione verificata · %1$s / %2$s caratteri utilizzati</string>
+    <string name="translation_deepl_storage_error">L’archivio cifrato non è disponibile su questo dispositivo.</string>
+    <string name="translation_deepl_test_error">Impossibile verificare la chiave API.</string>
+    <string name="translation_deepl_key_missing">Per usare DeepL, aggiungi una chiave API nelle impostazioni Interfaccia.</string>
+    <string name="translation_deepl_show_key">Mostra chiave API</string>
+    <string name="translation_deepl_hide_key">Nascondi chiave API</string>
+
 </resources>

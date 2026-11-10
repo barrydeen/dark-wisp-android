@@ -692,4 +692,24 @@
     <string name="local_relay_kind_zaps">Zaps (9735)</string>
     <string name="local_relay_add_kind">Type toevoegen</string>
     <string name="local_relay_invalid_url">Ongeldige lokale relay-URL</string>
+    <string name="translation_settings_title">Berichtvertaling</string>
+    <string name="translation_settings_subtitle">Kies hoe berichten worden vertaald en naar welke taal.</string>
+    <string name="translation_target_language">Doeltaal</string>
+    <string name="translation_engine">Vertaalengine</string>
+    <string name="translation_engine_mlkit">Op apparaat (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">DeepL API-sleutel</string>
+    <string name="translation_deepl_privacy">De tekst van het geselecteerde bericht wordt naar DeepL verzonden. Links, Nostr-verwijzingen, Lightning-facturen en hashtags worden beschermd.</string>
+    <string name="translation_deepl_save_key">Sleutel opslaan</string>
+    <string name="translation_deepl_test_key">Sleutel testen</string>
+    <string name="translation_deepl_remove_key">Sleutel verwijderen</string>
+    <string name="translation_deepl_key_saved">API-sleutel veilig opgeslagen op dit apparaat.</string>
+    <string name="translation_deepl_key_removed">API-sleutel verwijderd.</string>
+    <string name="translation_deepl_testing">Toegang tot DeepL controleren…</string>
+    <string name="translation_deepl_usage">Verbinding gecontroleerd · %1$s / %2$s tekens gebruikt</string>
+    <string name="translation_deepl_storage_error">Beveiligde opslag is niet beschikbaar op dit apparaat.</string>
+    <string name="translation_deepl_test_error">De API-sleutel kon niet worden gecontroleerd.</string>
+    <string name="translation_deepl_key_missing">Voeg in de interface-instellingen een DeepL API-sleutel toe om DeepL te gebruiken.</string>
+    <string name="translation_deepl_show_key">API-sleutel tonen</string>
+    <string name="translation_deepl_hide_key">API-sleutel verbergen</string>
 </resources>

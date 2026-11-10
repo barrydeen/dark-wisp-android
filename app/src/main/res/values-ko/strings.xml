@@ -693,4 +693,24 @@
     <string name="local_relay_kind_zaps">Zap (9735)</string>
     <string name="local_relay_add_kind">종류 추가</string>
     <string name="local_relay_invalid_url">잘못된 로컬 릴레이 URL</string>
+    <string name="translation_settings_title">게시물 번역</string>
+    <string name="translation_settings_subtitle">게시물을 번역하는 방식과 대상 언어를 선택하세요.</string>
+    <string name="translation_target_language">대상 언어</string>
+    <string name="translation_engine">번역 엔진</string>
+    <string name="translation_engine_mlkit">기기 내 (ML Kit)</string>
+    <string name="translation_engine_deepl">DeepL API</string>
+    <string name="translation_deepl_api_key">DeepL API 키</string>
+    <string name="translation_deepl_privacy">선택한 게시물의 텍스트가 DeepL로 전송됩니다. 링크, Nostr 참조, Lightning 인보이스 및 해시태그는 보호됩니다.</string>
+    <string name="translation_deepl_save_key">키 저장</string>
+    <string name="translation_deepl_test_key">키 테스트</string>
+    <string name="translation_deepl_remove_key">키 삭제</string>
+    <string name="translation_deepl_key_saved">API 키가 이 기기에 안전하게 저장되었습니다.</string>
+    <string name="translation_deepl_key_removed">API 키가 삭제되었습니다.</string>
+    <string name="translation_deepl_testing">DeepL 액세스를 확인하는 중…</string>
+    <string name="translation_deepl_usage">연결 확인됨 · %1$s / %2$s자 사용</string>
+    <string name="translation_deepl_storage_error">이 기기에서는 보안 저장소를 사용할 수 없습니다.</string>
+    <string name="translation_deepl_test_error">API 키를 확인할 수 없습니다.</string>
+    <string name="translation_deepl_key_missing">DeepL을 사용하려면 인터페이스 설정에서 DeepL API 키를 추가하세요.</string>
+    <string name="translation_deepl_show_key">API 키 표시</string>
+    <string name="translation_deepl_hide_key">API 키 숨기기</string>
 </resources>

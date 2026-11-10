@@ -305,7 +305,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     val customEmojiRepo = CustomEmojiRepository(app, pubkeyHex)
-    val translationRepo = TranslationRepository()
+    val translationRepo = TranslationRepository(app)
     val zapPrefs = ZapPreferences(app, pubkeyHex)
     val powPrefs = PowPreferences(app)
     private val processingDispatcher = Dispatchers.Default

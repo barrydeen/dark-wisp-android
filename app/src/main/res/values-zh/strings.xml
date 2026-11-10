@@ -353,7 +353,7 @@
     <string name="social_computing_network">正在计算网络...</string>
     <string name="social_filtering">正在筛选...</string>
     <string name="social_fetching_relays">正在获取中继列表...</string>
-    <string name="social_warning">这可能需要2\u20155分钟。请停留在此屏幕直至完成。</string>
+    <string name="social_warning">这可能需要2–5分钟。请停留在此屏幕直至完成。</string>
     <string name="social_top_accounts">热门账户</string>
     <string name="social_qualified_from">%2$d关注中有%1$d个合格</string>
     <string name="social_recompute">重新计算</string>

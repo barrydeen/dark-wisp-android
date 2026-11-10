@@ -402,7 +402,7 @@ class FeedSubscriptionManager(
             FeedType.WITH_REPLIES -> {
                 val authors = contactRepo.getFollowList().map { it.pubkey }
                 if (authors.isEmpty()) {
-                    Log.d("RLC", "[FeedSub] With reply: no followed authors")
+                    Log.d("RLC", "[FeedSub] Conversations: no followed authors")
                     return
                 }
                 eventRepo.setReplyFeedAuthors(authors.toSet())

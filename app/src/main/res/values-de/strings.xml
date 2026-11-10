@@ -353,7 +353,7 @@
     <string name="social_computing_network">Netzwerk wird berechnet...</string>
     <string name="social_filtering">Wird gefiltert...</string>
     <string name="social_fetching_relays">Relay-Listen werden abgerufen...</string>
-    <string name="social_warning">Dies kann 2\u20135 Minuten dauern. Bitte bleiben Sie auf diesem Bildschirm, bis es fertig ist.</string>
+    <string name="social_warning">Dies kann 2–5 Minuten dauern. Bitte bleiben Sie auf diesem Bildschirm, bis es fertig ist.</string>
     <string name="social_top_accounts">Top-Konten</string>
     <string name="social_qualified_from">%1$d qualifiziert aus %2$d Follows</string>
     <string name="social_recompute">Neu berechnen</string>

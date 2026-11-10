@@ -23,6 +23,30 @@ object Nip19 {
         return bech32Encode("nprofile", tlv)
     }
 
+    /** Encode an addressable event coordinate as a NIP-19 naddr. */
+    fun naddrEncode(
+        dTag: String,
+        authorHex: String,
+        kind: Int,
+        relays: List<String> = emptyList()
+    ): String {
+        require(dTag.isNotBlank()) { "Addressable event requires a d-tag" }
+        require(kind >= 0) { "Invalid event kind" }
+        val kindBytes = byteArrayOf(
+            (kind shr 24).toByte(),
+            (kind shr 16).toByte(),
+            (kind shr 8).toByte(),
+            kind.toByte()
+        )
+        val tlv = buildTlv {
+            addTlv(0x00, dTag.toByteArray(Charsets.UTF_8))
+            for (relay in relays) addTlv(0x01, relay.toByteArray(Charsets.UTF_8))
+            addTlv(0x02, authorHex.hexToByteArray())
+            addTlv(0x03, kindBytes)
+        }
+        return bech32Encode("naddr", tlv)
+    }
+
     fun neventEncode(eventId: ByteArray, relays: List<String> = emptyList(), author: ByteArray? = null): String {
         val tlv = buildTlv {
             addTlv(0x00, eventId)

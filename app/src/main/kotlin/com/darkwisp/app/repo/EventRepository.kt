@@ -382,6 +382,14 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return true
     }
 
+    /** Shared visibility check for feature feeds that are rendered outside the main timeline. */
+    fun isEventVisibleToUser(event: NostrEvent): Boolean {
+        if (!isVisible(event)) return false
+        if (isWotFiltered(event.pubkey, event.kind)) return false
+        if (muteRepo?.isEventMuted(event) == true) return false
+        return true
+    }
+
     /** Memory-only lookup — safe to call from composition (never touches ObjectBox). */
     fun peekEvent(id: String): NostrEvent? = eventCache[id]?.takeIf(::isVisible)
 
@@ -615,7 +623,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
         if (event.created_at > System.currentTimeMillis() / 1000 + 30) return  // reject future-dated notes (30s grace for clock skew)
         if (muteRepo?.isBlocked(event.pubkey) == true) return
-        if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
+        if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 30402 || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
         if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
             // NIP-22 replies-to-comments reference the thread root only via
             // uppercase E scope — prefer it over the lowercase-e parent.

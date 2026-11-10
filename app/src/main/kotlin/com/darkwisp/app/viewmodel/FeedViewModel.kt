@@ -426,7 +426,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         else when (type) {
             FeedType.RELAY, FeedType.TRENDING -> relay
             // Conversations are replies and comments only; the content-filter row
-            // is hidden in this mode, so do not expose unrelated gallery/poll filters.
+            // is hidden in this mode, so unrelated filters are not exposed.
             FeedType.WITH_REPLIES -> replies
             else -> main
         }

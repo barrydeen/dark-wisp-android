@@ -135,6 +135,7 @@ import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.HowToVote
 import androidx.compose.material.icons.outlined.Photo
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Person
@@ -160,6 +161,7 @@ fun FeedScreen(
     isDarkTheme: Boolean = true,
     onToggleTheme: () -> Unit = {},
     onCompose: () -> Unit,
+    onMarketplace: () -> Unit = {},
     onReply: (NostrEvent) -> Unit,
     onRelays: () -> Unit,
     onProfileEdit: () -> Unit = {},
@@ -894,9 +896,15 @@ fun FeedScreen(
                             ProfilePicture(url = userProfile?.picture, size = 32)
                         }
                         if (feedType == FeedType.WITH_REPLIES) {
-                            // Conversations are already limited to replies/comments, so
-                            // unrelated gallery and poll filters are intentionally hidden.
-                            Spacer(Modifier.weight(1f))
+                            // Conversations are already limited to replies/comments.
+                            // Keep the Marketplace shortcut available in this mode.
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                MarketplaceIconTab(onClick = onMarketplace, modifier = Modifier.width(56.dp))
+                            }
                         } else {
                             Row(
                                 modifier = Modifier.weight(1f),
@@ -909,6 +917,7 @@ fun FeedScreen(
                                     { viewModel.setFeedContentFilter(FeedContentFilter.TEXT_ONLY) }, Modifier.weight(1f))
                                 FeedContentFilterIconTab(FeedContentFilter.GALLERY_ONLY, contentFilter == FeedContentFilter.GALLERY_ONLY,
                                     { viewModel.setFeedContentFilter(FeedContentFilter.GALLERY_ONLY) }, Modifier.weight(1f))
+                                MarketplaceIconTab(onClick = onMarketplace, modifier = Modifier.weight(1f))
                                 FeedContentFilterIconTab(FeedContentFilter.POLLS_ONLY, contentFilter == FeedContentFilter.POLLS_ONLY,
                                     { viewModel.setFeedContentFilter(FeedContentFilter.POLLS_ONLY) }, Modifier.weight(1f))
                             }
@@ -3509,6 +3518,28 @@ private fun FeedContentFilterIconTab(
     }
 }
 
+
+@Composable
+private fun MarketplaceIconTab(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Storefront,
+            contentDescription = stringResource(R.string.marketplace_title),
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
 
 private fun formatFeedArticleTimestamp(epoch: Long): String {
     val now = System.currentTimeMillis() / 1000

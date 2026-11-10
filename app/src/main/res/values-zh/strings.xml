@@ -694,9 +694,10 @@
     <string name="local_relay_add_kind">添加类型</string>
     <string name="local_relay_invalid_url">无效的本地中继URL</string>
     <string name="tab_for_you">为你</string>
-    <string name="tab_with_reply">含回复</string>
+    <string name="tab_conversations">对话</string>
     <string name="tab_more">更多</string>
     <string name="tab_text">文字</string>
     <string name="tab_gallery">图库</string>
     <string name="tab_polls">投票</string>
+    <string name="feed_conversations_end">已显示全部近期对话。</string>
 </resources>

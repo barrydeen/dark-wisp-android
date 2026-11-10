@@ -336,7 +336,7 @@
     <string name="social_computing_network">Вычисление сети...</string>
     <string name="social_filtering">Фильтрация...</string>
     <string name="social_fetching_relays">Получение списков релеев...</string>
-    <string name="social_warning">Это может занять 2\u20135 минут. Пожалуйста, оставайтесь на этом экране до завершения.</string>
+    <string name="social_warning">Это может занять 2–5 минут. Пожалуйста, оставайтесь на этом экране до завершения.</string>
     <string name="social_top_accounts">Топ Аккаунты</string>
     <string name="social_qualified_from">%1$d квалифицировано из %2$d подписок</string>
     <string name="social_recompute">Пересчитать</string>

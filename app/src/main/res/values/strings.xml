@@ -396,7 +396,7 @@
     <string name="social_computing_network">Computing network...</string>
     <string name="social_filtering">Filtering...</string>
     <string name="social_fetching_relays">Fetching relay lists...</string>
-    <string name="social_warning">This may take 2\u20135 minutes. Please stay on this screen until it finishes.</string>
+    <string name="social_warning">This may take 2–5 minutes. Please stay on this screen until it finishes.</string>
     <string name="social_top_accounts">Top Accounts</string>
     <string name="social_qualified_from">%1$d qualified from %2$d follows</string>
     <string name="social_recompute">Recompute</string>

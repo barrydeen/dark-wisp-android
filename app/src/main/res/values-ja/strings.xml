@@ -353,7 +353,7 @@
     <string name="social_computing_network">ネットワークを計算中...</string>
     <string name="social_filtering">フィルター中...</string>
     <string name="social_fetching_relays">リレーリストを取得中...</string>
-    <string name="social_warning">2\u20135分かかる場合があります。完了するまでこの画面にとどまってください。</string>
+    <string name="social_warning">2–5分かかる場合があります。完了するまでこの画面にとどまってください。</string>
     <string name="social_top_accounts">トップアカウント</string>
     <string name="social_qualified_from">%2$d人のフォローから%1$d人が適合</string>
     <string name="social_recompute">再計算</string>

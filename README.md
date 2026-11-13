@@ -2,7 +2,15 @@
 
 A minimal, performant Android client for the [Nostr](https://nostr.com) protocol. Built with Kotlin and Jetpack Compose (Material 3), Dark Wisp prioritizes decentralization, intelligent relay routing, strong privacy, and a clean native experience.
 
-> **Status:** v1.0.0 — stable, actively developed.
+> **Status:** v1.2.5 — stable, actively developed.
+
+### Install & Run
+
+- **Install**: Download APKs from the [Releases](../../releases) page.
+- **Local build & run**:
+  - Debug: `./gradlew assembleDebug`
+  - Production (R8-minified): `./gradlew assembleRelease`
+- See [CLAUDE.md](CLAUDE.md) in the root for the architecture overview and build commands.
 
 ---
 

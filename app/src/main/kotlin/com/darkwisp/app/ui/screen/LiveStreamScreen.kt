@@ -117,6 +117,7 @@ fun LiveStreamScreen(
     onZap: ((messageId: String, senderPubkey: String) -> Unit)? = null,
     onZapStream: (() -> Unit)? = null,
     streamZapTotal: Long = 0,
+    streamZapTotalUncertain: Boolean = false,
     streamActivityEventId: String? = null,
     zapVersion: Int = 0,
     zapAnimatingIds: Set<String> = emptySet(),
@@ -127,11 +128,19 @@ fun LiveStreamScreen(
     val messageText by viewModel.messageText.collectAsState()
     val sending by viewModel.sending.collectAsState()
     val replyTarget by viewModel.replyTarget.collectAsState()
+    val isLoadingOlder by viewModel.isLoadingOlder.collectAsState()
+    val hasMoreHistory by viewModel.hasMoreChatHistory.collectAsState()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    // Auto-scroll to bottom when new messages arrive
+    // Newest row id seen at the last count change — distinguishes appends
+    // (new chat, autoscroll to bottom) from prepends (older history, keep
+    // the reading position).
+    var lastNewestId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        val newest = messages.last().id
+        if (newest != lastNewestId) {
+            lastNewestId = newest
             listState.animateScrollToItem(0)
         }
     }
@@ -209,6 +218,7 @@ fun LiveStreamScreen(
             onProfileClick = onProfileClick,
             onZapStream = onZapStream,
             streamZapTotal = streamZapTotal,
+            zapTotalUncertain = streamZapTotalUncertain,
             isZapInProgress = isStreamZapInProgress,
             isZapAnimating = isStreamZapAnimating
         )
@@ -263,6 +273,41 @@ fun LiveStreamScreen(
                             isZapAnimating = msg.id in zapAnimatingIds,
                             isZapInProgress = msg.id in zapInProgressIds
                         )
+                    }
+                }
+
+                if (hasMoreHistory) {
+                    // Top sentinel (reverseLayout puts later items at the visual
+                    // top): scrolling here pages in older history. The VM's
+                    // re-entrancy guard makes repeat appearances cheap no-ops.
+                    // Keyed on the oldest loaded chat id so it also re-fires
+                    // when the first messages arrive or a page lands, but not
+                    // on every new live message.
+                    item(key = "load-older-sentinel", contentType = "load-older") {
+                        if (isLoadingOlder) {
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "Loading older messages…",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp))
+                        }
+                        val oldestChatId = messages.firstOrNull { !it.isZapAnnouncement }?.id
+                        LaunchedEffect(oldestChatId) { viewModel.loadOlderMessages() }
                     }
                 }
             }
@@ -373,6 +418,7 @@ private fun StreamInfoBar(
     onProfileClick: (String) -> Unit,
     onZapStream: (() -> Unit)? = null,
     streamZapTotal: Long = 0,
+    zapTotalUncertain: Boolean = false,
     isZapInProgress: Boolean = false,
     isZapAnimating: Boolean = false
 ) {
@@ -427,8 +473,10 @@ private fun StreamInfoBar(
                     modifier = Modifier.size(14.dp),
                     tint = zapColor
                 )
+                // Trailing "+" when the total came from a bounded relay scan
+                // that may have missed older receipts (sidecar-style).
                 Text(
-                    text = formatZapSats(streamZapTotal),
+                    text = formatZapSats(streamZapTotal) + if (zapTotalUncertain) "+" else "",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = zapColor

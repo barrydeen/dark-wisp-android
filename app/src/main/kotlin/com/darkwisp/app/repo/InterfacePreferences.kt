@@ -75,8 +75,9 @@ class InterfacePreferences(context: Context) {
     fun isZapBoltIcon(): Boolean = prefs.getBoolean("zap_bolt_icon", false)
     fun setZapBoltIcon(enabled: Boolean) = prefs.edit().putBoolean("zap_bolt_icon", enabled).apply()
 
-    fun isLiveStreamsHidden(): Boolean = prefs.getBoolean("live_streams_hidden", false)
-    fun setLiveStreamsHidden(hidden: Boolean) = prefs.edit().putBoolean("live_streams_hidden", hidden).apply()
+    fun isLiveStreamsHidden(): Boolean = prefs.getBoolean(KEY_LIVE_STREAMS_HIDDEN, false)
+    fun setLiveStreamsHidden(hidden: Boolean) =
+        prefs.edit().putBoolean(KEY_LIVE_STREAMS_HIDDEN, hidden).apply()
 
     fun isPostUndoTimerEnabled(): Boolean = prefs.getBoolean("post_undo_timer_enabled", true)
     fun setPostUndoTimerEnabled(enabled: Boolean) = prefs.edit().putBoolean("post_undo_timer_enabled", enabled).apply()
@@ -166,6 +167,9 @@ class InterfacePreferences(context: Context) {
          * filter their `OnSharedPreferenceChangeListener` callbacks by it.
          */
         const val KEY_NOTIFICATION_FEED_STYLE = "notification_feed_style"
+
+        /** Pref key for hiding live-stream content; observed by FeedViewModel. */
+        const val KEY_LIVE_STREAMS_HIDDEN = "live_streams_hidden"
     }
 
     /** Reset all interface preferences to defaults (called on full logout). */

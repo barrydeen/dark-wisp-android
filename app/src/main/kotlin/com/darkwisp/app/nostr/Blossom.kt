@@ -23,18 +23,35 @@ object Blossom {
         return digest.digest(data).toHex()
     }
 
+    enum class AuthAction(val tagValue: String) {
+        UPLOAD("upload"),
+        MEDIA("media")
+    }
+
     fun createUploadAuth(
         privkey: ByteArray,
         pubkey: ByteArray,
         sha256Hex: String
+    ): String = createAuthHeader(privkey, pubkey, sha256Hex, AuthAction.UPLOAD)
+
+    fun createMediaAuth(
+        privkey: ByteArray,
+        pubkey: ByteArray,
+        sha256Hex: String
+    ): String = createAuthHeader(privkey, pubkey, sha256Hex, AuthAction.MEDIA)
+
+    private fun createAuthHeader(
+        privkey: ByteArray,
+        pubkey: ByteArray,
+        sha256Hex: String,
+        action: AuthAction
     ): String {
-        val tags = uploadAuthTags(sha256Hex)
         val event = NostrEvent.create(
             privkey = privkey,
             pubkey = pubkey,
             kind = KIND_AUTH,
             content = "Upload",
-            tags = tags
+            tags = authTags(sha256Hex, action)
         )
         return encodeAuthHeader(event)
     }
@@ -42,16 +59,30 @@ object Blossom {
     suspend fun createUploadAuth(
         signer: NostrSigner,
         sha256Hex: String
+    ): String = createAuthHeader(signer, sha256Hex, AuthAction.UPLOAD)
+
+    suspend fun createMediaAuth(
+        signer: NostrSigner,
+        sha256Hex: String
+    ): String = createAuthHeader(signer, sha256Hex, AuthAction.MEDIA)
+
+    private suspend fun createAuthHeader(
+        signer: NostrSigner,
+        sha256Hex: String,
+        action: AuthAction
     ): String {
-        val tags = uploadAuthTags(sha256Hex)
-        val event = signer.signEvent(kind = KIND_AUTH, content = "Upload", tags = tags)
+        val event = signer.signEvent(
+            kind = KIND_AUTH,
+            content = "Upload",
+            tags = authTags(sha256Hex, action)
+        )
         return encodeAuthHeader(event)
     }
 
-    private fun uploadAuthTags(sha256Hex: String): List<List<String>> {
+    internal fun authTags(sha256Hex: String, action: AuthAction): List<List<String>> {
         val expiration = (System.currentTimeMillis() / 1000 + 300).toString()
         return listOf(
-            listOf("t", "upload"),
+            listOf("t", action.tagValue),
             listOf("x", sha256Hex),
             listOf("expiration", expiration)
         )

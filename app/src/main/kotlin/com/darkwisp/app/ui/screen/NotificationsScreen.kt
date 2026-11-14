@@ -738,8 +738,16 @@ private fun ZenNotificationRow(
                         )
                     }
                 }
+                // The compact feed keeps the familiar icon + avatar row, with one post preview beneath it.
+                if (!isExpanded) {
+                    CompactNotificationPreview(
+                        item = item,
+                        eventRepo = eventRepo,
+                        resolveGroupMessage = resolveGroupMessage
+                    )
+                }
                 // Show voted option labels for NIP-88 polls
-                if (item.type == NotificationType.VOTE && item.voteOptionIds.isNotEmpty()) {
+                if (isExpanded && item.type == NotificationType.VOTE && item.voteOptionIds.isNotEmpty()) {
                     val optionLabels = remember(item.referencedEventId, item.voteOptionIds) {
                         val pollEvent = eventRepo?.getEvent(item.referencedEventId)
                         if (pollEvent != null) {
@@ -759,7 +767,7 @@ private fun ZenNotificationRow(
                     }
                 }
                 // Show voted option label for zap poll votes (kind 6969)
-                if (item.type == NotificationType.ZAP && item.zapPollOptionIndex != null) {
+                if (isExpanded && item.type == NotificationType.ZAP && item.zapPollOptionIndex != null) {
                     val optionLabel = remember(item.referencedEventId, item.zapPollOptionIndex) {
                         val pollEvent = eventRepo?.getEvent(item.referencedEventId)
                         if (pollEvent != null) {
@@ -1076,6 +1084,81 @@ private fun GroupChatExpansion(
             }
         }
     }
+}
+
+// ── Compact notification preview ────────────────────────────────────────
+
+@Composable
+private fun CompactNotificationPreview(
+    item: FlatNotificationItem,
+    eventRepo: EventRepository?,
+    resolveGroupMessage: ((groupChatId: String, messageId: String) -> Triple<String?, String?, Map<String, String>>)? = null
+) {
+    // A reply previews the new reply itself; a quote previews the quoting post.
+    // Reactions, reposts, zaps and votes preview the post they refer to.
+    val groupMessageId = if (item.type == NotificationType.REPLY) {
+        item.replyEventId ?: item.referencedEventId
+    } else {
+        item.referencedEventId
+    }
+    val groupContent = if (item.groupChatId != null && groupMessageId.isNotBlank()) {
+        resolveGroupMessage?.invoke(item.groupChatId, groupMessageId)?.first
+    } else null
+
+    val directContent = when {
+        !groupContent.isNullOrBlank() -> groupContent
+        item.type == NotificationType.DM || item.type == NotificationType.DM_REACTION -> item.dmContent
+        item.type == NotificationType.DM_ZAP || item.type == NotificationType.PROFILE_ZAP -> item.zapMessage
+        else -> null
+    }
+
+    if (!directContent.isNullOrBlank()) {
+        CompactPreviewText(directContent)
+        return
+    }
+
+    val repo = eventRepo ?: return
+    val eventId = when (item.type) {
+        // A private reply may not be fetchable as a public event. In that case,
+        // show its referenced parent post rather than attempting an invalid fetch.
+        NotificationType.REPLY -> if (item.isPrivateReply) {
+            item.referencedEventId
+        } else {
+            item.replyEventId ?: item.referencedEventId
+        }
+        NotificationType.QUOTE -> item.quoteEventId ?: item.referencedEventId
+        else -> item.referencedEventId
+    }.takeIf { it.isNotBlank() } ?: return
+
+    val quotedVersion by repo.quotedEventVersion.collectAsState()
+    val event = remember(eventId, quotedVersion) { repo.getEvent(eventId) }
+
+    LaunchedEffect(repo, eventId) {
+        if (repo.getEvent(eventId) == null) {
+            repo.requestQuotedEvent(eventId)
+        }
+    }
+
+    CompactPreviewText(event?.content)
+}
+
+@Composable
+private fun CompactPreviewText(content: String?) {
+    val previewLine = content
+        ?.lineSequence()
+        ?.firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: return
+
+    Text(
+        text = previewLine,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = 2.dp)
+    )
 }
 
 // ── Note Expansion (non-reply types) ────────────────────────────────────

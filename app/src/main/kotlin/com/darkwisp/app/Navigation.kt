@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.NostrUriData
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
@@ -104,6 +106,9 @@ import com.darkwisp.app.ui.screen.OnboardingTopicsScreen
 import com.darkwisp.app.ui.screen.OnboardingFirstPostScreen
 import com.darkwisp.app.ui.screen.RelayDetailScreen
 import com.darkwisp.app.ui.screen.WalletScreen
+import com.darkwisp.app.ui.screen.MarketplaceScreen
+import com.darkwisp.app.ui.screen.MarketplaceDetailScreen
+import com.darkwisp.app.ui.screen.MarketplaceEditorScreen
 import com.darkwisp.app.viewmodel.BlossomServersViewModel
 import com.darkwisp.app.viewmodel.ArticleViewModel
 import com.darkwisp.app.viewmodel.AuthViewModel
@@ -129,6 +134,7 @@ import com.darkwisp.app.viewmodel.PowStatus
 import com.darkwisp.app.viewmodel.SplashViewModel
 import com.darkwisp.app.viewmodel.LiveStreamViewModel
 import com.darkwisp.app.viewmodel.WalletViewModel
+import com.darkwisp.app.viewmodel.MarketplaceViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -136,13 +142,17 @@ object Routes {
     const val SPLASH = "splash"
     const val AUTH = "auth"
     const val FEED = "feed"
+    const val MARKETPLACE = "marketplace"
+    const val MARKETPLACE_DETAIL = "marketplace/detail/{eventId}"
+    const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}"
+    const val MARKETPLACE_EDITOR = "marketplace/edit?eventId={eventId}"
     const val COMPOSE = "compose"
     const val RELAYS = "relays"
     const val PROFILE_EDIT = "profile/edit"
     const val USER_PROFILE = "profile/{pubkey}"
     const val THREAD = "thread/{eventId}"
     const val DM_LIST = "dms"
-    const val DM_CONVERSATION = "dm/{pubkey}"
+    const val DM_CONVERSATION = "dm/{pubkey}?prefill={prefill}&strictDm={strictDm}"
     const val DM_CONVERSATION_GROUP = "dm/group/{conversationKey}"
     const val CONTACT_PICKER = "contact_picker"
     const val GROUP_ROOM = "group_room/{encodedRelay}/{groupId}?scrollTo={scrollTo}"
@@ -193,8 +203,13 @@ fun NostrUriData.toRoute(): String? = when (this) {
     is NostrUriData.ProfileRef -> "profile/$pubkey"
     is NostrUriData.NoteRef -> "thread/$eventId"
     is NostrUriData.AddressRef ->
-        if ((kind == 30023 || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null)
-            "article/$kind/$author/$dTag" else null
+        when {
+            kind == Nip99.KIND_LISTING && author != null ->
+                "marketplace/address/$author/${android.net.Uri.encode(dTag)}"
+            (kind == 30023 || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null ->
+                "article/$kind/$author/$dTag"
+            else -> null
+        }
 }
 
 @Composable
@@ -210,6 +225,7 @@ fun WispNavHost(
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = viewModel()
     val feedViewModel: FeedViewModel = viewModel()
+    val marketplaceViewModel: MarketplaceViewModel = viewModel()
     val composeViewModel: ComposeViewModel = viewModel()
     val relayViewModel: RelayViewModel = viewModel()
     val profileViewModel: ProfileViewModel = viewModel()
@@ -839,6 +855,9 @@ fun WispNavHost(
                     composeViewModel.clear()
                     navController.navigate(Routes.COMPOSE)
                 },
+                onMarketplace = {
+                    navController.navigate(Routes.MARKETPLACE)
+                },
                 onReply = { event ->
                     replyTarget = event
                     quoteTarget = null
@@ -1006,6 +1025,126 @@ fun WispNavHost(
                 },
                 fetchGroupPreview = { relayUrl, groupId ->
                     groupListViewModel.fetchGroupPreview(relayUrl, groupId)
+                }
+            )
+        }
+
+        composable(Routes.MARKETPLACE) {
+            val followedPubkeys = feedViewModel.contactRepo.getFollowList().map { it.pubkey }
+            MarketplaceScreen(
+                viewModel = marketplaceViewModel,
+                relayPool = feedViewModel.relayPool,
+                eventRepository = feedViewModel.eventRepo,
+                followedPubkeys = followedPubkeys,
+                userPubkey = feedViewModel.getUserPubkey(),
+                onBack = { navController.popBackStack() },
+                onOpenListing = { event -> navController.navigate("marketplace/detail/${event.id}") },
+                onCreateListing = { navController.navigate("marketplace/edit") }
+            )
+        }
+
+        composable(
+            Routes.MARKETPLACE_DETAIL,
+            arguments = listOf(navArgument("eventId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val eventId = backStackEntry.arguments?.getString("eventId") ?: return@composable
+            val event by feedViewModel.eventRepo
+                .observeEvent(eventId)
+                .collectAsState(initial = feedViewModel.eventRepo.peekEvent(eventId))
+            LaunchedEffect(eventId) {
+                if (feedViewModel.eventRepo.peekEvent(eventId) == null) {
+                    feedViewModel.eventRepo.requestQuotedEvent(eventId)
+                }
+            }
+            if (event == null) {
+                androidx.compose.material3.Text(context.getString(R.string.marketplace_empty))
+            } else {
+                val listing = event!!
+                MarketplaceDetailScreen(
+                    event = listing,
+                    userPubkey = feedViewModel.getUserPubkey(),
+                    onBack = { navController.popBackStack() },
+                    onEdit = { navController.navigate("marketplace/edit?eventId=$eventId") },
+                    onContactSeller = { message ->
+                        val listingAddress = Nip19.naddrEncode(
+                            dTag = Nip99.dTag(listing),
+                            authorHex = listing.pubkey,
+                            kind = Nip99.KIND_LISTING
+                        )
+                        val messageWithReference = message.trim() + "\n\nnostr:" + listingAddress
+                        val encodedMessage = android.net.Uri.encode(messageWithReference)
+                        navController.navigate("dm/${listing.pubkey}?prefill=$encodedMessage&strictDm=true")
+                    }
+                )
+            }
+        }
+
+        composable(
+            Routes.MARKETPLACE_ADDRESS,
+            arguments = listOf(
+                navArgument("author") { type = NavType.StringType },
+                navArgument("dTag") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val author = backStackEntry.arguments?.getString("author") ?: return@composable
+            val dTag = backStackEntry.arguments?.getString("dTag") ?: return@composable
+            val event by feedViewModel.eventRepo
+                .observeAddressableEvent(Nip99.KIND_LISTING, author, dTag)
+                .collectAsState(initial = feedViewModel.eventRepo.findAddressableEvent(Nip99.KIND_LISTING, author, dTag))
+            LaunchedEffect(author, dTag) {
+                feedViewModel.eventRepo.requestAddressableEvent(Nip99.KIND_LISTING, author, dTag)
+            }
+            if (event == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else {
+                MarketplaceDetailScreen(
+                    event = event!!,
+                    userPubkey = feedViewModel.getUserPubkey(),
+                    onBack = { navController.popBackStack() },
+                    onEdit = {
+                        navController.navigate("marketplace/edit?eventId=${event!!.id}")
+                    },
+                    onContactSeller = { message ->
+                        val listingAddress = Nip19.naddrEncode(
+                            dTag = Nip99.dTag(event!!),
+                            authorHex = event!!.pubkey,
+                            kind = Nip99.KIND_LISTING
+                        )
+                        val messageWithReference = message.trim() + "\n\nnostr:" + listingAddress
+                        val encodedMessage = android.net.Uri.encode(messageWithReference)
+                        navController.navigate("dm/${event!!.pubkey}?prefill=$encodedMessage&strictDm=true")
+                    }
+                )
+            }
+        }
+
+        composable(
+            Routes.MARKETPLACE_EDITOR,
+            arguments = listOf(
+                navArgument("eventId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val eventId = backStackEntry.arguments?.getString("eventId")
+            val existingEvent = eventId?.let { feedViewModel.eventRepo.peekEvent(it) }
+            MarketplaceEditorScreen(
+                existingEvent = existingEvent,
+                userPubkey = feedViewModel.getUserPubkey(),
+                signer = activeSigner,
+                relayPool = feedViewModel.relayPool,
+                eventRepository = feedViewModel.eventRepo,
+                onBack = { navController.popBackStack() },
+                onPublished = { event ->
+                    marketplaceViewModel.addOrUpdate(event)
+                    navController.navigate("marketplace/detail/${event.id}") {
+                        popUpTo(Routes.MARKETPLACE) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -1467,12 +1606,18 @@ fun WispNavHost(
 
         composable(
             Routes.DM_CONVERSATION,
-            arguments = listOf(navArgument("pubkey") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("pubkey") { type = NavType.StringType },
+                navArgument("prefill") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("strictDm") { type = NavType.BoolType; defaultValue = false }
+            )
         ) { backStackEntry ->
             val pubkey = backStackEntry.arguments?.getString("pubkey") ?: return@composable
+            val prefill = backStackEntry.arguments?.getString("prefill")
+            val strictDm = backStackEntry.arguments?.getBoolean("strictDm") ?: false
             val dmConvoViewModel: DmConversationViewModel = viewModel()
             val userPubkey = feedViewModel.getUserPubkey()
-            LaunchedEffect(pubkey) {
+            LaunchedEffect(pubkey, prefill, strictDm) {
                 refreshInboxSubscriptionsIfStale()
                 dmConvoViewModel.init(
                     peerPubkeyHex = pubkey,
@@ -1480,7 +1625,9 @@ fun WispNavHost(
                     relayListRepository = feedViewModel.relayListRepo,
                     relayPool = feedViewModel.relayPool,
                     powPreferences = feedViewModel.powPrefs,
-                    myPubkeyHex = userPubkey
+                    myPubkeyHex = userPubkey,
+                    initialMessage = prefill,
+                    requireRecipientDmRelays = strictDm
                 )
                 activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo, feedViewModel.eventRepo, feedViewModel.notifRepo) }
             }

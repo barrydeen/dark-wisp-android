@@ -1,0 +1,39 @@
+name: Android marketplace staging build
+
+on:
+  push:
+    branches:
+      - feature/nip99-marketplace
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Clean previous build outputs
+        run: ./gradlew --no-daemon --no-build-cache clean
+
+      - name: Run unit tests and build staging APK with stacktrace
+        run: ./gradlew --no-daemon --no-build-cache testStagingUnitTest assembleStaging --stacktrace --info
+
+      - name: Upload staging APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dark-wisp-marketplace-staging
+          path: app/build/outputs/apk/staging/*.apk
+          if-no-files-found: error

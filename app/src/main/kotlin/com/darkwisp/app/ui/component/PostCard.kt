@@ -70,6 +70,7 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Surface
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip13
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.NostrEvent
@@ -199,7 +200,13 @@ fun PostCard(
 
     // Reply-to attribution: resolve the author of the event being replied to.
     // Keyed lookups so only this card recomposes when the reply target/profile arrives.
-    val replyTargetId = remember(event) { Nip10.getReplyTarget(event) }
+    val replyTargetId = remember(event) {
+        if (event.kind == Nip22.KIND_COMMENT) {
+            event.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+        } else {
+            Nip10.getReplyTarget(event)
+        }
+    }
     val replyTarget = rememberObservedEvent(eventRepo, replyTargetId)
 
     val hasReactionDetails = reactionDetails.isNotEmpty() || zapDetails.isNotEmpty() || repostDetails.isNotEmpty()
@@ -280,9 +287,10 @@ fun PostCard(
                 }
             }
         }
-        if (Nip10.isReply(event)) {
+        if (Nip10.isReply(event) || event.kind == Nip22.KIND_COMMENT) {
             val replyToPubkey = replyTarget?.pubkey
                 ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+                ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "P" }?.get(1)
             val replyProfile = rememberProfile(eventRepo, replyToPubkey)
             val replyToName = remember(replyToPubkey, replyProfile) {
                 replyProfile?.displayString ?: replyToPubkey?.let { (it.take(8) + "...") }
@@ -345,7 +353,7 @@ fun PostCard(
                 val userStatus = remember(statusVersion, event.pubkey) {
                     eventRepo?.getUserStatus(event.pubkey)
                 }
-                if (userStatus != null && !Nip10.isReply(event)) {
+                if (userStatus != null && !Nip10.isReply(event) && event.kind != Nip22.KIND_COMMENT) {
                     Text(
                         text = userStatus,
                         style = MaterialTheme.typography.bodySmall,

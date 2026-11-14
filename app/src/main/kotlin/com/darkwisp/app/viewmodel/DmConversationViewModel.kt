@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
 import android.app.Application
+import com.darkwisp.app.R
 import android.webkit.MimeTypeMap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -96,6 +97,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     val selectedMessageId: StateFlow<String?> = _selectedMessageId
 
     private var peerPubkey: String = ""
+    private var requireRecipientDmRelays: Boolean = false
     private var conversationKey: String = ""
     /** All participants in this conversation, excluding the local user. */
     private var participants: List<String> = emptyList()
@@ -125,9 +127,13 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         relayPool: RelayPool? = null,
         powPreferences: PowPreferences? = null,
         myPubkeyHex: String? = null,
-        participantPubkeys: List<String> = emptyList()
+        participantPubkeys: List<String> = emptyList(),
+        initialMessage: String? = null,
+        requireRecipientDmRelays: Boolean = false
     ) {
         peerPubkey = peerPubkeyHex
+        this.requireRecipientDmRelays = requireRecipientDmRelays
+        if (!initialMessage.isNullOrBlank()) _messageText.value = initialMessage
         participants = participantPubkeys.ifEmpty { listOf(peerPubkeyHex) }
         val myKey = myPubkeyHex ?: keyRepo.getPubkeyHex() ?: ""
         conversationKey = DmRepository.conversationKey(participants + myKey)
@@ -164,6 +170,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val fetched = fetchRecipientDmRelays(relayPool, forceRefresh = true)
                 val primaryRelays = when {
                     fetched.isNotEmpty() -> PeerDeliveryRelays(fetched, DeliveryRelaySource.DM_RELAYS)
+                    requireRecipientDmRelays -> PeerDeliveryRelays(emptyList(), DeliveryRelaySource.DM_RELAYS)
                     cached.isNullOrEmpty() -> resolveRecipientRelaysWithSource(emptyList(), relayPool)
                     else -> _peerDeliveryRelays.value
                 }
@@ -419,7 +426,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
 
         if (signer != null) {
             // Remote signer path
-            val recipientDmRelays = fetchRecipientDmRelays(relayPool)
+            val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
             val deliveryRelays = resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
 
             for (recipient in participants) {
@@ -453,7 +460,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 createdAt = rumorCreatedAt
             )
             val selfMsg = ClientMessage.event(selfWrap)
-            if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(selfMsg) else relayPool.sendToWriteRelays(selfMsg)
+            if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(selfMsg) else if (!requireRecipientDmRelays) relayPool.sendToWriteRelays(selfMsg)
 
             val fileMetadata = EncryptedMedia.EncryptedFileMetadata(
                 fileUrl = uploadResult.url,
@@ -483,7 +490,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             // Local signer path
             val keypair = keyRepo.getKeypair() ?: return
-            val recipientDmRelays = fetchRecipientDmRelays(relayPool)
+            val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
             val deliveryRelays = resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
 
             for (recipient in participants) {
@@ -519,7 +526,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 createdAt = rumorCreatedAt
             )
             val selfMsg = ClientMessage.event(selfWrap)
-            if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(selfMsg) else relayPool.sendToWriteRelays(selfMsg)
+            if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(selfMsg) else if (!requireRecipientDmRelays) relayPool.sendToWriteRelays(selfMsg)
 
             val senderPubkeyHex = keypair.pubkey.toHex()
             val fileMetadata = EncryptedMedia.EncryptedFileMetadata(
@@ -662,8 +669,17 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
             _sending.value = true
             viewModelScope.launch(Dispatchers.Default) {
                 try {
-                    val recipientDmRelays = fetchRecipientDmRelays(relayPool)
-                    val deliveryRelays = resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                    val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
+                    if (requireRecipientDmRelays && recipientDmRelays.isEmpty()) {
+                        _messageText.value = text
+                        _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
+                        return@launch
+                    }
+                    val deliveryRelays = if (requireRecipientDmRelays) {
+                        recipientDmRelays
+                    } else {
+                        resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                    }
 
                     val dmPowEnabled = powPrefs?.isDmPowEnabled() == true
                     val dmDifficulty = if (dmPowEnabled) powPrefs?.getDmDifficulty() ?: 0 else 0
@@ -730,7 +746,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                     val selfMsg = ClientMessage.event(selfWrap)
                     if (relayPool.hasDmRelays()) {
                         relayPool.sendToDmRelays(selfMsg)
-                    } else {
+                    } else if (!requireRecipientDmRelays) {
                         relayPool.sendToWriteRelays(selfMsg)
                     }
 
@@ -779,8 +795,17 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val emojiTags2 = com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(text, resolvedEmojis)
                 val combinedTags = replyTags + allParticipantTags + emojiTags2
 
-                val recipientDmRelays = fetchRecipientDmRelays(relayPool)
-                val deliveryRelays = resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
+                if (requireRecipientDmRelays && recipientDmRelays.isEmpty()) {
+                    _messageText.value = text
+                    _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
+                    return@launch
+                }
+                val deliveryRelays = if (requireRecipientDmRelays) {
+                    recipientDmRelays
+                } else {
+                    resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                }
 
                 val dmPowEnabled = powPrefs?.isDmPowEnabled() == true
                 val dmDifficulty = if (dmPowEnabled) powPrefs?.getDmDifficulty() ?: 0 else 0
@@ -846,7 +871,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val selfMsg = ClientMessage.event(selfWrap)
                 if (relayPool.hasDmRelays()) {
                     relayPool.sendToDmRelays(selfMsg)
-                } else {
+                } else if (!requireRecipientDmRelays) {
                     relayPool.sendToWriteRelays(selfMsg)
                 }
 
@@ -898,26 +923,34 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 if (signer != null) {
                     for (recipient in participants) {
                         val wrap = Nip17.createDmReactionRemote(signer, recipient, targetRumorId, originalSenderPubkey, emoji, emojiUrl)
-                        val relays = fetchRelaysForParticipant(recipient, relayPool)
-                            .ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
+                        val relays = if (requireRecipientDmRelays && recipient == peerPubkey) {
+                            fetchRecipientDmRelays(relayPool, forceRefresh = true)
+                        } else {
+                            fetchRelaysForParticipant(recipient, relayPool)
+                                .ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
+                        }
                         sendToDeliveryRelays(relayPool, relays, ClientMessage.event(wrap))
                     }
                     // Self-copy
                     val selfWrap = Nip17.createDmReactionRemote(signer, signer.pubkeyHex, targetRumorId, originalSenderPubkey, emoji, emojiUrl)
                     if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(ClientMessage.event(selfWrap))
-                    else relayPool.sendToWriteRelays(ClientMessage.event(selfWrap))
+                    else if (!requireRecipientDmRelays) relayPool.sendToWriteRelays(ClientMessage.event(selfWrap))
                 } else {
                     val keypair = keyRepo.getKeypair() ?: return@launch
                     for (recipient in participants) {
                         val wrap = Nip17.createDmReaction(keypair.privkey, keypair.pubkey, recipient.hexToByteArray(), targetRumorId, originalSenderPubkey, emoji, emojiUrl)
-                        val relays = fetchRelaysForParticipant(recipient, relayPool)
-                            .ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
+                        val relays = if (requireRecipientDmRelays && recipient == peerPubkey) {
+                            fetchRecipientDmRelays(relayPool, forceRefresh = true)
+                        } else {
+                            fetchRelaysForParticipant(recipient, relayPool)
+                                .ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
+                        }
                         sendToDeliveryRelays(relayPool, relays, ClientMessage.event(wrap))
                     }
                     // Self-copy
                     val selfWrap = Nip17.createDmReaction(keypair.privkey, keypair.pubkey, keypair.pubkey, targetRumorId, originalSenderPubkey, emoji, emojiUrl)
                     if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(ClientMessage.event(selfWrap))
-                    else relayPool.sendToWriteRelays(ClientMessage.event(selfWrap))
+                    else if (!requireRecipientDmRelays) relayPool.sendToWriteRelays(ClientMessage.event(selfWrap))
                 }
             } catch (e: Exception) {
                 Log.w("DmConversation", "sendReaction failed", e)

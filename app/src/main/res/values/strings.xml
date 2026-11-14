@@ -396,7 +396,7 @@
     <string name="social_computing_network">Computing network...</string>
     <string name="social_filtering">Filtering...</string>
     <string name="social_fetching_relays">Fetching relay lists...</string>
-    <string name="social_warning">This may take 2\u20135 minutes. Please stay on this screen until it finishes.</string>
+    <string name="social_warning">This may take 2–5 minutes. Please stay on this screen until it finishes.</string>
     <string name="social_top_accounts">Top Accounts</string>
     <string name="social_qualified_from">%1$d qualified from %2$d follows</string>
     <string name="social_recompute">Recompute</string>
@@ -953,4 +953,53 @@
     <string name="alt_editor_chars_remaining">%1$d remaining</string>
     <string name="alt_editor_clear">Clear description</string>
 
+    <string name="tab_conversations">Conversations</string>
+    <string name="tab_more">More</string>
+    <string name="tab_text">Text</string>
+    <string name="tab_gallery">Gallery</string>
+    <string name="tab_polls">Polls</string>
+
+    <!-- NIP-99 Marketplace -->
+    <string name="marketplace_title">Marketplace</string>
+    <string name="marketplace_refresh">Refresh listings</string>
+    <string name="marketplace_all">All</string>
+    <string name="marketplace_following">Following</string>
+    <string name="marketplace_mine">My listings</string>
+    <string name="marketplace_empty">No listings found</string>
+    <string name="marketplace_load_error">Could not load listings: %1$s</string>
+    <string name="marketplace_new">New listing</string>
+    <string name="marketplace_edit">Edit listing</string>
+    <string name="marketplace_title_field">Title</string>
+    <string name="marketplace_summary_field">Summary</string>
+    <string name="marketplace_description_field">Description</string>
+    <string name="marketplace_price_field">Price</string>
+    <string name="marketplace_currency_field">Currency</string>
+    <string name="marketplace_location_field">Location</string>
+    <string name="marketplace_category_field">Categories</string>
+    <string name="marketplace_category_hint">Separate categories with commas</string>
+    <string name="marketplace_status_label">Listing status</string>
+    <string name="marketplace_active">Active</string>
+    <string name="marketplace_sold">Sold</string>
+    <string name="marketplace_photos">Photos</string>
+    <string name="marketplace_add_photos">Add photos</string>
+    <string name="marketplace_uploading">Uploading photos…</string>
+    <string name="marketplace_upload_failed">Photo upload failed: %1$s</string>
+    <string name="marketplace_login_required">Sign in with a writable Nostr account to publish a listing.</string>
+    <string name="marketplace_required_fields">Enter a title and description before publishing.</string>
+    <string name="marketplace_publish_unconfirmed">No relay confirmed the listing.</string>
+    <string name="marketplace_publish_failed">Could not publish listing: %1$s</string>
+    <string name="marketplace_publish">Publish listing</string>
+    <string name="marketplace_update">Update listing</string>
+    <string name="marketplace_listing_details">Listing</string>
+    <string name="marketplace_seller_short">Seller · %1$s</string>
+    <string name="marketplace_seller">Seller · %1$s</string>
+    <string name="marketplace_location_value">Location · %1$s</string>
+    <string name="marketplace_contact_title">Ask the seller</string>
+    <string name="marketplace_contact_explainer">Ask about availability, condition, payment or delivery.</string>
+    <string name="marketplace_message_label">Your private message</string>
+    <string name="marketplace_message_intro">Hello! I’m interested in “%1$s”. Is it still available?</string>
+    <string name="marketplace_contact_button">Continue in private chat</string>
+    <string name="marketplace_dm_privacy">A private NIP-17 chat will open. Review your message and send it from there.</string>
+    <string name="marketplace_dm_relay_required">This seller has not published a NIP-17 DM relay list (kind 10050). Dark Wisp will not use fallback relays, to protect your privacy.</string>
+    <string name="feed_conversations_end">You have reached the end of recent conversations.</string>
 </resources>

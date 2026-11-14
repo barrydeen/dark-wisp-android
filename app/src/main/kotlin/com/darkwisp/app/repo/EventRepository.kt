@@ -174,8 +174,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val _relaySourceVersion = MutableStateFlow(0)
     val relaySourceVersion: StateFlow<Int> = _relaySourceVersion
 
-    // Repost tracking: inner event id -> set of reposter pubkeys
+    // Repost tracking: distinct reposters for avatars, plus every repost event for
+    // accurate counts and NIP-09 undo. Keys are the embedded/original event IDs.
     private val repostAuthors = LruCache<String, MutableSet<String>>(15000)
+    private data class RepostRecord(val author: String, val createdAt: Long)
+    private val repostEvents = LruCache<String, ConcurrentHashMap<String, RepostRecord>>(15000)
+    // Reverse index lets a kind-5 deletion remove the repost from its target's counters.
+    private val repostTargetsByEventId = LruCache<String, String>(30000)
     // Feed sort time override: eventId -> effective sort timestamp (e.g. repost time)
     private val feedSortTime = LruCache<String, Long>(15000)
     // Track which events the current user has reposted: eventId -> true
@@ -490,7 +495,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (event.kind in intArrayOf(20, 21, 22)) {
             Log.d("GALLERY", "[EventRepo] addEvent kind=${event.kind} id=${event.id.take(12)} pubkey=${event.pubkey.take(8)} alreadySeen=${event.id in seenEventIds}")
         }
-        if (!seenEventIds.add(event.id)) return  // atomic dedup across all relay threads
+        if (!seenEventIds.add(event.id)) {
+            // A kind-6 repost may have entered seenEventIds through cacheEvent() or
+            // another profile path before reaching this pipeline. Reconcile its
+            // metadata even when the event itself is already deduplicated.
+            if (event.kind == 6) recordRepostIfEligible(event)
+            return  // atomic dedup across all relay threads
+        }
         if (event.created_at > System.currentTimeMillis() / 1000 + 30) return  // reject future-dated notes (30s grace for clock skew)
         if (muteRepo?.isBlocked(event.pubkey) == true) return
         if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
@@ -549,55 +560,42 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 binaryInsert(event, fromFeed = true)
             }
             6 -> {
-                // Repost: parse embedded event from content and insert it into the feed
+                // Repost: reconcile metadata, then insert its embedded event into the feed.
+                val inner = recordRepostIfEligible(event) ?: return
                 if (event.content.isNotBlank()) {
                     try {
-                        val inner = fromJson(event.content)
-                        if (muteRepo?.isBlocked(inner.pubkey) == true) return
-                        if (muteRepo?.isEventMuted(inner) == true) return
-                        if (isWotFiltered(event.pubkey, 6) && isWotFiltered(inner.pubkey, 1)) return
-                        val authors = repostAuthors.get(inner.id)
-                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
-                        authors.add(event.pubkey)
-                        // Auto-mark if this is the current user's repost
-                        if (event.pubkey == currentUserPubkey) {
-                            userReposts.put(inner.id, true)
-                        }
-                        repostDirty = true
-                        markEventVersionDirty(inner.id)
                         val isReply = Nip10.isReply(inner)
-                        // Only bump feed sort time if the reposter is a followed author.
-                        // Engagement subscriptions bring in reposts from anyone — non-followed
-                        // reposters should update counts but not re-sort the feed.
+                        // Reposts from followed authors (including our own account) should
+                        // surface the embedded note in the Follows feed. The note may already
+                        // be in seenEventIds because it was loaded from a profile/cache; use
+                        // feedIds, not seenEventIds, to decide whether it has entered the feed.
                         val filter = _authorFilter.value
                         val reposterIsFollowed = filter == null || event.pubkey in filter
-                        if (seenEventIds.add(inner.id)) {
+                        val innerWasNew = seenEventIds.add(inner.id)
+                        if (innerWasNew) {
                             eventCache[inner.id] = inner
                             trackIncoming(inner)
-                            if (!isReply) {
-                                if (reposterIsFollowed) {
+                        }
+                        if (!isReply) {
+                            val alreadyInFeed = synchronized(feedList) { inner.id in feedIds }
+                            if (reposterIsFollowed) {
+                                val previousSortTime = feedSortTime.get(inner.id) ?: inner.created_at
+                                if (!alreadyInFeed || event.created_at > previousSortTime) {
                                     feedSortTime.put(inner.id, event.created_at)
-                                }
-                                val sortTime = if (reposterIsFollowed) event.created_at else inner.created_at
-                                binaryInsert(inner, sortTime = sortTime, fromFeed = true)
-                            }
-                        } else if (!isReply && reposterIsFollowed && event.pubkey != currentUserPubkey) {
-                            // Already seen — update sort time if repost is newer so it surfaces to top
-                            // Skip re-sort for the user's own reposts to avoid jarring viewport jumps
-                            val prevTime = feedSortTime.get(inner.id) ?: inner.created_at
-                            if (event.created_at > prevTime) {
-                                feedSortTime.put(inner.id, event.created_at)
-                                synchronized(feedList) {
-                                    val idx = feedList.indexOfFirst { it.id == inner.id }
-                                    if (idx >= 0) {
-                                        feedList.removeAt(idx)
-                                        feedIds.remove(inner.id)
-                                        if (filteredFeedIds.remove(inner.id)) {
-                                            filteredFeed.removeAll { it.id == inner.id }
+                                    if (alreadyInFeed) {
+                                        synchronized(feedList) {
+                                            feedList.removeAll { it.id == inner.id }
+                                            feedIds.remove(inner.id)
+                                            if (filteredFeedIds.remove(inner.id)) {
+                                                filteredFeed.removeAll { it.id == inner.id }
+                                            }
                                         }
                                     }
+                                    eventCache[inner.id] = inner
+                                    binaryInsert(inner, sortTime = event.created_at, fromFeed = true)
                                 }
-                                binaryInsert(inner, sortTime = event.created_at, fromFeed = true)
+                            } else if (innerWasNew) {
+                                binaryInsert(inner, sortTime = inner.created_at, fromFeed = true)
                             }
                         }
                     } catch (_: Exception) {}
@@ -607,8 +605,20 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 val deletedIds = Nip09.getDeletedEventIds(event)
                 for (id in deletedIds) {
                     val target = eventCache[id]
-                    if (target == null || target.pubkey == event.pubkey) {
+                    val repostTarget = repostTargetsByEventId.get(id)
+                    val repostRecord = repostTarget?.let { repostEvents.get(it)?.get(id) }
+                    // NIP-09 deletions are only authoritative when we know the
+                    // referenced event/repost and can verify its author. Never create a
+                    // tombstone for an unknown ID: a third party could otherwise suppress
+                    // an event before it arrives from a relay.
+                    // Either a known event target or a known repost record is
+                    // sufficient, but an unknown ID must never create a tombstone.
+                    val authorMatches =
+                        target?.pubkey == event.pubkey ||
+                            repostRecord?.author == event.pubkey
+                    if (authorMatches) {
                         deletedEventsRepo?.markDeleted(id)
+                        if (repostRecord != null) removeRepostEvent(id, event.pubkey)
                         removeEvent(id)
                     }
                 }
@@ -953,6 +963,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun cacheEvent(event: NostrEvent) {
+        // Profile and cache-only fetches can see repost wrappers before addEvent().
+        // Record their author/target relationship here as well; registration is
+        // idempotent because repostEvents is keyed by the wrapper event ID.
+        if (event.kind == 6) recordRepostIfEligible(event)
         if (eventCache.containsKey(event.id)) return
         seenEventIds.add(event.id)
         eventCache[event.id] = event
@@ -1343,6 +1357,134 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return result
     }
 
+    /**
+     * Parse and register a visible kind-6 repost independently from feed insertion.
+     * This must also run for events already present in seenEventIds: cacheEvent() can
+     * mark a wrapper as seen before its author/target relationship reaches addEvent().
+     * Registration is idempotent, so repeated relay copies never inflate counts.
+     */
+    private fun recordRepostIfEligible(repostEvent: NostrEvent): NostrEvent? {
+        if (repostEvent.kind != 6 || repostEvent.content.isBlank()) return null
+        if (repostEvent.created_at > System.currentTimeMillis() / 1000 + 30) return null
+        if (deletedEventsRepo?.isDeleted(repostEvent.id) == true) return null
+        if (muteRepo?.isBlocked(repostEvent.pubkey) == true) return null
+
+        return try {
+            val inner = fromJson(repostEvent.content)
+            if (muteRepo?.isBlocked(inner.pubkey) == true) return null
+            if (muteRepo?.isEventMuted(inner) == true) return null
+            if (isWotFiltered(repostEvent.pubkey, 6) && isWotFiltered(inner.pubkey, 1)) return null
+            recordRepost(repostEvent, inner)
+            inner
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun recordRepost(repostEvent: NostrEvent, inner: NostrEvent) {
+        val records = repostEvents.get(inner.id)
+            ?: ConcurrentHashMap<String, RepostRecord>().also { repostEvents.put(inner.id, it) }
+        records[repostEvent.id] = RepostRecord(repostEvent.pubkey, repostEvent.created_at)
+        repostTargetsByEventId.put(repostEvent.id, inner.id)
+
+        val authors = repostAuthors.get(inner.id)
+            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
+        authors.add(repostEvent.pubkey)
+        if (repostEvent.pubkey == currentUserPubkey) userReposts.put(inner.id, true)
+
+        repostDirty = true
+        markEventVersionDirty(inner.id)
+    }
+
+    private fun removeRepostEvent(repostEventId: String, deletingPubkey: String) {
+        val targetId = repostTargetsByEventId.get(repostEventId) ?: return
+        val records = repostEvents.get(targetId) ?: return
+        val record = records[repostEventId] ?: return
+        if (record.author != deletingPubkey) return
+
+        repostTargetsByEventId.remove(repostEventId)
+        records.remove(repostEventId)
+        val stillByAuthor = records.values.any { it.author == record.author }
+        if (!stillByAuthor) repostAuthors.get(targetId)?.remove(record.author)
+
+        if (record.author == currentUserPubkey &&
+            records.values.none { it.author == currentUserPubkey }) {
+            userReposts.remove(targetId)
+        }
+        if (records.isEmpty()) {
+            repostEvents.remove(targetId)
+            repostAuthors.remove(targetId)
+        }
+
+        val authorFilter = _authorFilter.value
+        val latestFollowedRepost = records.values
+            .asSequence()
+            .filter { authorFilter == null || it.author in authorFilter }
+            .maxOfOrNull { it.createdAt }
+        if (latestFollowedRepost == null) feedSortTime.remove(targetId)
+        else feedSortTime.put(targetId, latestFollowedRepost)
+
+        // Keep the master and filtered feed ordering in sync after undo/deletion.
+        val target = eventCache[targetId] ?: synchronized(feedList) {
+            feedList.firstOrNull { it.id == targetId }
+        }
+        val wasInFeed = synchronized(feedList) { targetId in feedIds }
+        if (target != null && wasInFeed) {
+            synchronized(feedList) {
+                feedList.removeAll { it.id == targetId }
+                feedIds.remove(targetId)
+                if (filteredFeedIds.remove(targetId)) filteredFeed.removeAll { it.id == targetId }
+            }
+            binaryInsert(
+                target,
+                sortTime = latestFollowedRepost ?: target.created_at,
+                fromFeed = false
+            )
+        }
+
+        repostDirty = true
+        markEventVersionDirty(targetId)
+    }
+
+    /**
+     * All repost events for this target that belong to the currently signed-in user.
+     * Also consult the local event database so a repost from an earlier session is
+     * recognised even when its kind-6 event is outside the current relay subscription.
+     */
+    fun getUserRepostEventIds(eventId: String): List<String> {
+        val myPubkey = currentUserPubkey ?: return emptyList()
+        val persisted = eventPersistence?.getEventsByAuthorAndKind(myPubkey, 6, 5000).orEmpty()
+        persisted.forEach { repostEvent ->
+            if (deletedEventsRepo?.isDeleted(repostEvent.id) == true) return@forEach
+            val targetId = repostEvent.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+            if (targetId == eventId) {
+                try {
+                    recordRepost(repostEvent, fromJson(repostEvent.content))
+                } catch (_: Exception) {
+                }
+            }
+        }
+        return repostEvents.get(eventId)?.entries
+            ?.filter { it.value.author == myPubkey }
+            ?.map { it.key }
+            ?: emptyList()
+    }
+
+    /** Optimistically remove all known own repost events for [eventId] after publishing NIP-09. */
+    fun removeUserRepost(eventId: String) {
+        val myPubkey = currentUserPubkey
+        if (myPubkey == null) {
+            userReposts.remove(eventId)
+            repostDirty = true
+            markEventVersionDirty(eventId)
+            return
+        }
+        getUserRepostEventIds(eventId).forEach { removeRepostEvent(it, myPubkey) }
+        if (getUserRepostEventIds(eventId).isEmpty()) userReposts.remove(eventId)
+        repostDirty = true
+        markEventVersionDirty(eventId)
+    }
+
     fun getRepostAuthor(eventId: String): String? = repostAuthors.get(eventId)?.firstOrNull()
 
     fun getReposterPubkeys(eventId: String): List<String> =
@@ -1354,7 +1496,9 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return authors.any { it in pubkeys }
     }
 
-    fun getRepostCount(eventId: String): Int = repostAuthors.get(eventId)?.size ?: 0
+    /** Counts individual repost events; author lists remain deduplicated for avatars. */
+    fun getRepostCount(eventId: String): Int =
+        repostEvents.get(eventId)?.size ?: repostAuthors.get(eventId)?.size ?: 0
 
     fun getRepostTime(eventId: String): Long? = feedSortTime.get(eventId)
 
@@ -1647,14 +1791,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                         if (muteRepo?.isBlocked(inner.pubkey) == true) return
                         if (muteRepo?.isEventMuted(inner) == true) return
                         // Track repost metadata for badges
-                        val authors = repostAuthors.get(inner.id)
-                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
-                        authors.add(event.pubkey)
-                        if (event.pubkey == currentUserPubkey) {
-                            userReposts.put(inner.id, true)
-                        }
-                        repostDirty = true
-                        markEventVersionDirty(inner.id)
+                        recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
                         if (!isReply) {
                             eventCache[inner.id] = inner
@@ -1705,14 +1842,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                         val inner = NostrEvent.fromJson(event.content)
                         if (muteRepo?.isBlocked(inner.pubkey) == true) return
                         if (muteRepo?.isEventMuted(inner) == true) return
-                        val authors = repostAuthors.get(inner.id)
-                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
-                        authors.add(event.pubkey)
-                        if (event.pubkey == currentUserPubkey) {
-                            userReposts.put(inner.id, true)
-                        }
-                        repostDirty = true
-                        markEventVersionDirty(inner.id)
+                        recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
                         if (!isReply) {
                             eventCache[inner.id] = inner
@@ -1786,6 +1916,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         zapSats.evictAll()
         eventRelays.evictAll()
         repostAuthors.evictAll()
+        repostEvents.evictAll()
+        repostTargetsByEventId.evictAll()
         reactionCounts.evictAll()
         userReactions.evictAll()
         reactionDetails.evictAll()

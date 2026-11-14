@@ -190,6 +190,7 @@ fun ActionBar(
                 }
                 if (showRepostMenu) {
                     RepostPopup(
+                        hasUserReposted = hasUserReposted,
                         onRepost = {
                             onRepost()
                             showRepostMenu = false
@@ -404,6 +405,7 @@ internal fun icBoltPath(w: Float, h: Float, scale: Float = 1f): Path {
 
 @Composable
 private fun RepostPopup(
+    hasUserReposted: Boolean,
     onRepost: () -> Unit,
     onQuote: () -> Unit,
     onDismiss: () -> Unit
@@ -421,7 +423,11 @@ private fun RepostPopup(
         ) {
             Row(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
                 TextButton(onClick = onRepost) {
-                    Text(stringResource(R.string.btn_retweet))
+                    Text(
+                        stringResource(
+                            if (hasUserReposted) R.string.btn_undo_repost else R.string.btn_retweet
+                        )
+                    )
                 }
                 TextButton(onClick = onQuote) {
                     Text(stringResource(R.string.title_quote))

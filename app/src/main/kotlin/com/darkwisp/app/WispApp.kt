@@ -6,15 +6,21 @@ import androidx.profileinstaller.ProfileVerifier
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.gif.AnimatedImageDecoder
+import coil3.intercept.Interceptor
 import coil3.memory.MemoryCache
+import coil3.request.ImageResult
 import coil3.video.VideoFrameDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.darkwisp.app.db.WispObjectBox
+import com.darkwisp.app.nostr.BlossomUri
 import com.darkwisp.app.relay.HttpClientFactory
 import com.darkwisp.app.relay.TorManager
+import com.darkwisp.app.repo.BlossomRepository
+import com.darkwisp.app.repo.BlossomUriResolver
 import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.ExchangeRateRepository
+import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.TorPreferences
 import com.darkwisp.app.repo.ZapSender
 import java.util.concurrent.Executors
@@ -78,6 +84,24 @@ class WispApp : Application(), SingletonImageLoader.Factory {
     }
 
     override fun newImageLoader(context: android.content.Context): ImageLoader {
+        // Resolves BUD-10 `blossom:` URIs before the network fetcher sees the
+        // request. One KeyRepository, read per resolution, so the account
+        // switcher is picked up without rebuilding the loader.
+        val keyRepo = KeyRepository(context)
+        val resolver = BlossomUriResolver(
+            // GET-and-verify downloads whole blobs (hash-checked before use),
+            // so the per-attempt budget has room for a multi-MB image on a
+            // slow server; the factory keeps Tor routing current per fetch.
+            httpClient = {
+                HttpClientFactory.getImageClient().newBuilder()
+                    .connectTimeout(6, TimeUnit.SECONDS)
+                    .callTimeout(20, TimeUnit.SECONDS)
+                    .build()
+            },
+            accountServers = {
+                BlossomRepository.readServersFromPrefs(context, keyRepo.getPubkeyHex())
+            },
+        )
         return ImageLoader.Builder(context)
             .components {
                 add(AnimatedImageDecoder.Factory())
@@ -88,6 +112,7 @@ class WispApp : Application(), SingletonImageLoader.Factory {
                 add(OkHttpNetworkFetcherFactory(callFactory = {
                     Call.Factory { request -> HttpClientFactory.getImageClient().newCall(request) }
                 }))
+                add(BlossomUriInterceptor(resolver))
             }
             .memoryCache {
                 MemoryCache.Builder()
@@ -96,5 +121,19 @@ class WispApp : Application(), SingletonImageLoader.Factory {
             }
             .crossfade(true)
             .build()
+    }
+
+    /** Rewrites `blossom:` model strings to their resolved https URL; every other request passes through. */
+    private class BlossomUriInterceptor(private val resolver: BlossomUriResolver) : Interceptor {
+        override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+            val data = chain.request.data as? String
+            if (data == null || !data.startsWith(BlossomUri.SCHEME, ignoreCase = true)) {
+                return chain.proceed()
+            }
+            val resolved = resolver.resolve(data)
+                // No server answered — proceed and let the fetch fail as a normal image error.
+                ?: return chain.proceed()
+            return chain.withRequest(chain.request.newBuilder().data(resolved).build()).proceed()
+        }
     }
 }

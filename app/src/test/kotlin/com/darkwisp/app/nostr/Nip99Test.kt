@@ -68,6 +68,24 @@ class Nip99Test {
     }
 
     @Test
+    fun `uses the first occurrence of duplicate listing tags`() {
+        val listing = event(
+            listOf(
+                listOf("d", "first-listing"),
+                listOf("d", "second-listing"),
+                listOf("title", "Original title"),
+                listOf("title", "Injected title"),
+                listOf("price", "450", "EUR"),
+                listOf("price", "999", "USD")
+            )
+        )
+
+        assertEquals("first-listing", Nip99.dTag(listing))
+        assertEquals("Original title", Nip99.title(listing))
+        assertEquals("450 EUR", Nip99.priceLabel(listing))
+    }
+
+    @Test
     fun `missing price is represented as null`() {
         assertNull(Nip99.price(event(listOf(listOf("d", "no-price"), listOf("title", "Free")))))
     }
